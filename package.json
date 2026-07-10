@@ -8,9 +8,11 @@
     "node": ">=24"
   },
   "scripts": {
-    "analyze": "node core/analyze.mjs",
+    "build": "node core/build.mjs",
+    "test": "node --test tests/",
     "dry-run": "node simkl/import.mjs --dry-run",
     "import": "node simkl/import.mjs --commit",
-    "verify": "node simkl/verify.mjs"
+    "verify": "node simkl/verify.mjs",
+    "verify:core": "node core/verify.mjs"
   }
 }
