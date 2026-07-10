@@ -62,3 +62,23 @@ export function buildHistoryPayload(master, { useTvdbAnimeSeasons = true } = {})
 
   return { shows, movies };
 }
+
+export function buildPlanToWatchPayload(master) {
+  const withEpisodes = new Set(master.episodes.map((e) => String(e.showTvdb)));
+  const shows = master.planToWatch.shows
+    .filter((s) => !withEpisodes.has(String(s.tvdb))) // skip the 10 overlap; status resolves via history
+    .map((s) => ({
+      ids: { tvdb: toTvdbId(s.tvdb, `plan-to-watch show "${s.title ?? s.tvdb}"`) },
+      ...(s.title ? { title: s.title } : {}),
+      status: 'plantowatch',
+    }));
+  const movies = master.planToWatch.movies.map((mv) => ({
+    ids: {
+      tvdb: toTvdbId(mv.tvdb, `plan-to-watch movie "${mv.title ?? mv.tvdb}"`),
+      ...(mv.imdb ? { imdb: mv.imdb } : {}),
+    },
+    ...(mv.title ? { title: mv.title } : {}),
+    status: 'plantowatch',
+  }));
+  return { shows, movies };
+}
