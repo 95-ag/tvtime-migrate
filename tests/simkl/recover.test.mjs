@@ -10,7 +10,7 @@ const master = {
     { showTvdb: '245521', season: 1, episode: 5, watchedAt: 'D4' }, // tv override → simkl 25227 (season1, ep5)
     { showTvdb: '999999', season: 1, episode: 1, watchedAt: 'D5' }, // gap, no map/override → unresolved
     { showTvdb: '888888', season: 1, episode: 1, watchedAt: 'D6' }, // NOT a gap → ignored
-    { showTvdb: '305074', season: 0, episode: 1, watchedAt: 'DS' }, // special → skipped
+    { showTvdb: '305074', season: 0, episode: 1, watchedAt: 'DS' }, // special, no map entry for 0|1 → unresolved
   ],
 };
 const maps = {
@@ -39,11 +39,22 @@ test('planRecovery routes each episode to its correct Simkl target, groups by si
   assert.deepEqual(byId[25227].seasons, [{ number: 1, episodes: [{ number: 5, watched_at: 'D4' }] }]);
 });
 
-test('planRecovery lists unresolved gap episodes and ignores non-gap + specials', () => {
+test('planRecovery lists unresolved gap episodes and ignores non-gap shows', () => {
   const { payload, unresolved } = planRecovery(master, gaps, mapFor, overrideFor);
   assert.ok(unresolved.some((u) => u.tvdb === 999999 && u.episode === 1));
-  assert.equal(unresolved.length, 1); // only 999999; specials skipped, 888888 not a gap
+  assert.ok(unresolved.some((u) => u.tvdb === 305074 && u.season === 0)); // special now surfaced, not skipped
   assert.ok(!payload.shows.some((s) => s.ids.simkl === undefined));
+});
+
+test('planRecovery routes a season-0 special that has a franchise-map entry', () => {
+  const m = { episodes: [{ showTvdb: '1', season: 0, episode: 1, watchedAt: 'S' }] };
+  const mapFor = (t) => (t === '1' ? new Map([['0|1', { simkl: 40959, epNum: 3 }]]) : null);
+  const { payload, unresolved } = planRecovery(m, ['1'], mapFor, () => null);
+  assert.equal(unresolved.length, 0);
+  assert.deepEqual(payload.shows[0], {
+    ids: { simkl: 40959 },
+    seasons: [{ number: 1, episodes: [{ number: 3, watched_at: 'S' }] }],
+  });
 });
 
 test('planRecovery counts a routing collision without overwriting the first watched_at', () => {
