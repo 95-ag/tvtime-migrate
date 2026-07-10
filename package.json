@@ -13,6 +13,11 @@
     "dry-run": "node simkl/import.mjs --dry-run",
     "import": "node simkl/import.mjs --commit",
     "verify": "node simkl/verify.mjs",
-    "verify:core": "node core/verify.mjs"
+    "verify:core": "node core/verify.mjs",
+    "format": "biome format --write .",
+    "check": "biome check ."
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.3"
   }
 }
