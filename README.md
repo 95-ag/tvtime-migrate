@@ -23,9 +23,10 @@ Next: build `core/` (the master dataset), then the Simkl and Trakt importers.
 ```
 data/{refract,gdpr,data-extractor,rescue}/   # exports, one folder per source (gitignored)
 core/                                         # merge four exports → master dataset (dedup · normalize · bucket-map)
-simkl/                                         # Simkl API importer
-trakt/                                         # Trakt API importer
-config/  logs/  tmp/                           # config · run artifacts · scratch
+build/master.json                            # generated master dataset (gitignored)
+simkl/                                        # Simkl API importer
+trakt/                                        # Trakt API importer
+logs/  tmp/                                   # run artifacts · scratch (gitignored)
 ```
 
 ## Setup
