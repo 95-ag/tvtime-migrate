@@ -8,8 +8,10 @@ test('agreeing tvdb ids across lineages pass', () => {
 });
 
 test('a tvdb disagreement on a shared name throws', () => {
-  assert.throws(() => checkIdIntegrity(
-    [{ tvdb: '10', title: 'The Office' }], [{ tvdb: '99', title: 'The Office' }]), /mismatch/);
+  assert.throws(
+    () => checkIdIntegrity([{ tvdb: '10', title: 'The Office' }], [{ tvdb: '99', title: 'The Office' }]),
+    /mismatch/,
+  );
 });
 
 test('unjoinable names (language variants) are allowed, not errors', () => {

@@ -2,10 +2,28 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildEpisodes } from '../../core/merge-episodes.mjs';
 
-const rEp = (o) => ({ seriesTvdb: '10', seriesImdb: null, title: 'S', season: 1, episode: 1,
-  epTvdb: '100', watchedAt: '2020-01-01T00:00:00Z', rewatchCount: 0, special: false, ...o });
-const sEp = (o) => ({ showTvdb: '10', title: 'S', season: 1, episode: 1,
-  epTvdb: '100', watchedAt: '2021-06-06T06:06:06Z', special: false, ...o });
+const rEp = (o) => ({
+  seriesTvdb: '10',
+  seriesImdb: null,
+  title: 'S',
+  season: 1,
+  episode: 1,
+  epTvdb: '100',
+  watchedAt: '2020-01-01T00:00:00Z',
+  rewatchCount: 0,
+  special: false,
+  ...o,
+});
+const sEp = (o) => ({
+  showTvdb: '10',
+  title: 'S',
+  season: 1,
+  episode: 1,
+  epTvdb: '100',
+  watchedAt: '2021-06-06T06:06:06Z',
+  special: false,
+  ...o,
+});
 
 test('Refract episodes form the spine with canonical dates', () => {
   const eps = buildEpisodes([rEp()], []);
@@ -37,5 +55,12 @@ test('duplicate Refract keys collapse to one row', () => {
 
 test('output is sorted by (showTvdb, season, episode) for determinism', () => {
   const eps = buildEpisodes([rEp({ episode: 3 }), rEp({ episode: 1 }), rEp({ season: 2, episode: 1 })], []);
-  assert.deepEqual(eps.map((e) => [e.season, e.episode]), [[1, 1], [1, 3], [2, 1]]);
+  assert.deepEqual(
+    eps.map((e) => [e.season, e.episode]),
+    [
+      [1, 1],
+      [1, 3],
+      [2, 1],
+    ],
+  );
 });

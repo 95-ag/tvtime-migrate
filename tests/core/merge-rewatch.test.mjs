@@ -9,10 +9,13 @@ test('name→tvdb map is case/space-insensitive', () => {
 
 test('rewatch rows bridge to tvdb and carry play counts', () => {
   const map = buildNameToTvdb([{ tvdb: '10', title: 'The Office' }]);
-  const rw = buildRewatch([
-    { showName: 'The Office', season: 2, episode: 3, cpt: 2 },
-    { showName: 'The Office', season: 2, episode: 4, cpt: 1 },
-  ], map);
+  const rw = buildRewatch(
+    [
+      { showName: 'The Office', season: 2, episode: 3, cpt: 2 },
+      { showName: 'The Office', season: 2, episode: 4, cpt: 1 },
+    ],
+    map,
+  );
   assert.deepEqual(rw, [
     { showTvdb: '10', season: 2, episode: 3, plays: 2 },
     { showTvdb: '10', season: 2, episode: 4, plays: 1 },

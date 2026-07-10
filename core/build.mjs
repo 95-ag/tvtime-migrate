@@ -2,8 +2,12 @@
 // data/ is read-only; the only write is build/master.json. No wall-clock in the output (determinism gate).
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import {
-  loadRefractEpisodes, loadRefractSeries, loadRefractMovies,
-  loadRescueEpisodes, loadRescueShows, loadGdprRewatch,
+  loadRefractEpisodes,
+  loadRefractSeries,
+  loadRefractMovies,
+  loadRescueEpisodes,
+  loadRescueShows,
+  loadGdprRewatch,
 } from './sources.mjs';
 import { buildEpisodes } from './merge-episodes.mjs';
 import { buildMovies, buildShows, buildPlanToWatch, buildDropped } from './merge-catalog.mjs';
@@ -31,10 +35,14 @@ export function buildMaster() {
   const rewatch = buildRewatch(gdprRewatch, buildNameToTvdb(shows));
 
   const counts = {
-    episodes: episodes.length, movies: movies.length, shows: shows.length,
-    planToWatchShows: planToWatch.shows.length, planToWatchMovies: planToWatch.movies.length,
+    episodes: episodes.length,
+    movies: movies.length,
+    shows: shows.length,
+    planToWatchShows: planToWatch.shows.length,
+    planToWatchMovies: planToWatch.movies.length,
     droppedShows: droppedShows.length,
-    rewatchEpisodes: rewatch.length, rewatchPlays: rewatch.reduce((a, r) => a + r.plays, 0),
+    rewatchEpisodes: rewatch.length,
+    rewatchPlays: rewatch.reduce((a, r) => a + r.plays, 0),
   };
   return { counts, episodes, movies, shows, planToWatch, droppedShows, rewatch };
 }

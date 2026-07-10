@@ -25,8 +25,7 @@ export function checkRowShapes(master) {
       throw new Error(`episode S/E not numeric: ${JSON.stringify(e)}`);
     if (e.watchedAt !== null && !ISO_RE.test(e.watchedAt))
       throw new Error(`episode watchedAt not ISO-Z: ${JSON.stringify(e)}`);
-    if (!['refract', 'rescue'].includes(e.source))
-      throw new Error(`episode bad source: ${JSON.stringify(e)}`);
+    if (!['refract', 'rescue'].includes(e.source)) throw new Error(`episode bad source: ${JSON.stringify(e)}`);
   }
   for (const m of master.movies) {
     if (!m.tvdb && !m.imdb) throw new Error(`movie has no tvdb or imdb: ${JSON.stringify(m)}`);

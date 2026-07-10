@@ -2,7 +2,11 @@
 // Emits per-episode play COUNTS only. Turning counts into dated Trakt plays is a Phase 3 decision;
 // core never fabricates replay dates (data-integrity rule). Unbridged rows are dropped here and land
 // on the failure manifest at import time.
-const norm = (s) => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim();
+const norm = (s) =>
+  String(s || '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
 
 export function buildNameToTvdb(shows) {
   const map = new Map();
@@ -17,7 +21,10 @@ export function buildRewatch(gdprRewatch, nameToTvdb) {
     if (!tvdb) continue;
     out.push({ showTvdb: tvdb, season: r.season, episode: r.episode, plays: r.cpt });
   }
-  return out.sort((a, b) =>
-    String(a.showTvdb).localeCompare(String(b.showTvdb), undefined, { numeric: true }) ||
-    a.season - b.season || a.episode - b.episode);
+  return out.sort(
+    (a, b) =>
+      String(a.showTvdb).localeCompare(String(b.showTvdb), undefined, { numeric: true }) ||
+      a.season - b.season ||
+      a.episode - b.episode,
+  );
 }

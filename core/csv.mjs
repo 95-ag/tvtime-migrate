@@ -12,7 +12,10 @@ export function parseCsv(text) {
     const c = text[i];
     if (inQuotes) {
       if (c === '"') {
-        if (text[i + 1] === '"') { field += '"'; i++; } // escaped quote
+        if (text[i + 1] === '"') {
+          field += '"';
+          i++;
+        } // escaped quote
         else inQuotes = false;
       } else {
         field += c;
