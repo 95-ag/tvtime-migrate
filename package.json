@@ -11,7 +11,7 @@
     "build": "node core/build.mjs",
     "test": "node --test \"tests/**/*.test.mjs\"",
     "auth": "node --env-file=.env simkl/auth.mjs",
-    "dry-run": "node simkl/import.mjs --dry-run",
+    "dry-run": "node simkl/dry-run.mjs",
     "import": "node simkl/import.mjs --commit",
     "verify": "node simkl/verify.mjs",
     "verify:core": "node core/verify.mjs",
