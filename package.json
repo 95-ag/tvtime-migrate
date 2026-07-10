@@ -15,6 +15,8 @@
     "probe": "node --env-file=.env simkl/probe.mjs",
     "import": "node --env-file=.env simkl/import.mjs",
     "verify": "node --env-file=.env simkl/verify.mjs",
+    "franchise": "node --env-file=.env simkl/franchise.mjs",
+    "recover": "node --env-file=.env simkl/recover.mjs",
     "verify:core": "node core/verify.mjs",
     "format": "biome format --write .",
     "check": "biome check ."
