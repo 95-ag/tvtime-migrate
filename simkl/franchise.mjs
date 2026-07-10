@@ -44,16 +44,23 @@ export async function resolveFranchise(client, tvdb) {
 }
 
 // Live: build+cache maps for every distinct show tvdb in the master. Reads cache unless refresh=true.
-export async function buildAllMaps(client, master, { refresh = false, log = console.log } = {}) {
-  const cache = !refresh && existsSync(CACHE) ? JSON.parse(readFileSync(CACHE, 'utf8')) : {};
+// Resume-safe: writes the cache after EACH tvdb (not just at the end) and isolates per-tvdb failures
+// so one bad show doesn't lose the rest of a multi-minute run; failed tvdbs are retried on the next call.
+export async function buildAllMaps(client, master, { refresh = false, log = console.log, cachePath = CACHE } = {}) {
+  const cache = !refresh && existsSync(cachePath) ? JSON.parse(readFileSync(cachePath, 'utf8')) : {};
   const tvdbs = [...new Set(master.episodes.map((e) => String(e.showTvdb)))];
   for (const tvdb of tvdbs) {
-    if (cache[tvdb]) continue;
-    const { type, map, collisions } = await resolveFranchise(client, tvdb);
-    cache[tvdb] = { type, entries: Object.fromEntries(map), collisions };
-    log(`franchise ${tvdb}: type=${type} entries=${map.size} collisions=${collisions}`);
+    if (cache[tvdb] && cache[tvdb].type !== 'error') continue;
+    try {
+      const { type, map, collisions } = await resolveFranchise(client, tvdb);
+      cache[tvdb] = { type, entries: Object.fromEntries(map), collisions };
+      log(`franchise ${tvdb}: type=${type} entries=${map.size} collisions=${collisions}`);
+    } catch (e) {
+      cache[tvdb] = { type: 'error', error: String(e?.message ?? e), entries: {} };
+      log(`franchise ${tvdb}: ERROR ${e?.message ?? e}`);
+    }
+    writeFileSync(cachePath, JSON.stringify(cache, null, 2));
   }
-  writeFileSync(CACHE, JSON.stringify(cache, null, 2));
   return cache;
 }
 
