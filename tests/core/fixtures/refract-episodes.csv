@@ -1,0 +1,4 @@
+series_tvdb_id,series_imdb_id,series_uuid,title,season,episode,tvdb_id,is_watched,watched_at,rewatch_count,special
+459616,,ff893e73,Our Universe (2026),1,1,10937193,true,2026-02-08T16:33:13Z,0,false
+459616,,ff893e73,Our Universe (2026),1,2,11537840,false,,0,false
+83277,,ff5f6a1f,"Toradora!, The Movie",1,1,555,true,2019-08-24T08:03:55Z,1,true
