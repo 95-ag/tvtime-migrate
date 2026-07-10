@@ -1,0 +1,16 @@
+{
+  "name": "tvtime-migrate",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Migrate TV Time watch history to Simkl (and later Trakt) via API",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "analyze": "node core/analyze.mjs",
+    "dry-run": "node simkl/import.mjs --dry-run",
+    "import": "node simkl/import.mjs --commit",
+    "verify": "node simkl/verify.mjs"
+  }
+}

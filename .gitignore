@@ -1,0 +1,17 @@
+# Claude local working space (rules/hooks/docs/work are managed locally, not committed)
+.claude/
+
+# Personal watch-history exports (working copy of OneDrive archive)
+data/
+
+# Generated artifacts
+logs/
+tmp/
+
+# Secrets & tokens
+.env
+.simkl-token.json
+.trakt-token.json
+
+# Node
+node_modules/
