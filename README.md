@@ -10,22 +10,27 @@ TV Time's own official (GDPR) export can't drive the migration on its own: its e
 
 ## Status
 
-Analysis, target research, and specs are complete — build is next.
+- **`core/` complete** — reconciles the four overlapping exports (hybrid per-category source-of-truth: Refract per-episode spine + Rescue coverage graft + GDPR rewatch/unique fields) into one PII-free master dataset with row-level + id-integrity verification.
+- **`simkl/` complete** — full Simkl importer: PIN auth, `/sync/history` import (episodes + per-episode dates, movies, plan-to-watch, native status buckets), an **identity-based franchise-aware verify** gate, and a **franchise recovery** step that resolves anime Simkl splits per-cour or renumbers absolutely.
+- **`trakt/` — next** (OAuth device, rewatch plays, "Dropped" list).
 
-- **Source-of-truth reconciled** — the export arrived as four overlapping dumps of differing lineage; source-of-truth is hybrid per-category (Refract per-episode spine + Rescue coverage graft + GDPR rewatch/unique fields).
-- **Both targets are API-based** — Simkl `/sync/history` (PIN auth), Trakt `/sync/history` (OAuth device). The web importers were rejected (Trakt's native TV Time import is broken; CSV/JSON drop rewatch).
-- **Free-tier v1 scope locked** — imports watched episodes + dates, movies, plan-to-watch, and status buckets to both; rewatch is Trakt-only (Simkl gates it behind VIP); custom lists, ratings, and comments are deferred or out of scope.
+**Both targets are API-based** — Simkl `/sync/history` (PIN), Trakt `/sync/history` (OAuth device); the web importers were rejected (Trakt's native TV Time import is broken; CSV/JSON drop rewatch). **Free-tier v1 scope:** watched episodes + dates, movies, plan-to-watch, status buckets; rewatch is Trakt-only (Simkl gates it behind VIP); custom lists/ratings/comments deferred or out of scope.
 
-Next: build `core/` (the master dataset), then the Simkl and Trakt importers.
+### Cross-catalog note (why anime needs extra machinery)
+
+TheTVDB (the source ids) and Simkl organize anime differently: Simkl **splits** a franchise TheTVDB keeps under one id into separate per-cour series, uses **absolute** episode numbering, and files anime films under its anime library. The importer discovers this at run time via a **franchise episode-map** — `(tvdb season, episode) → (Simkl anime, episode)` built from Simkl's `/anime/episodes/{id}` — used by both recovery (send to the right id) and verify (check the right id). A small manual-override table (`simkl/overrides.mjs`) covers the handful of shows whose ids Simkl can't auto-resolve. The master dataset stays deliberately target-neutral (tvdb ids + episodes only).
 
 ## Layout
 
 ```
 data/{refract,gdpr,data-extractor,rescue}/   # exports, one folder per source (gitignored)
 core/                                         # merge four exports → master dataset (dedup · normalize · bucket-map)
-build/master.json                            # generated master dataset (gitignored)
-simkl/                                        # Simkl API importer
-trakt/                                        # Trakt API importer
+build/                                        # master.json · franchise-map.json · reports · manifests (gitignored)
+simkl/                                        # Simkl importer:
+  config·payload·client·manifest·auth        #   tunables · master→payload · HTTP · failure log · PIN auth
+  dry-run·probe·import                        #   validate · live gate · paced commit
+  franchise·overrides·recover·verify          #   identity map+cache · manual ids · gap recovery · trustworthy gate
+trakt/                                        # Trakt API importer (next)
 logs/  tmp/                                   # run artifacts · scratch (gitignored)
 ```
 
@@ -35,7 +40,19 @@ logs/  tmp/                                   # run artifacts · scratch (gitign
 2. `cp .env.example .env` and fill the client id(s) for the target(s) you're importing to:
    - Simkl — register an app at https://simkl.com/settings/developer/ (free, instant).
    - Trakt — register an app at https://trakt.tv/oauth/applications.
-3. Run dry-run / import / verify per `package.json` scripts. Every import dry-runs before it writes, and is idempotent on re-run.
+3. Simkl workflow (idempotent — Simkl dedups by item + watch date, so every step is safe to re-run):
+
+   ```
+   npm run build      # reconcile exports → build/master.json
+   npm run auth       # Simkl PIN auth (enter the code at simkl.com/pin) → .simkl-token.json (gitignored)
+   npm run dry-run    # assemble + validate the payload, no writes
+   npm run probe      # GATE: 1-item live idempotency/date/anime-mapping check before any bulk send
+   npm run import     # paced, chunked /sync/history commit
+   npm run franchise  # build the anime franchise episode-map cache (build/franchise-map.json)
+   npm run verify     # identity-based read-back gate → coverage / date-fidelity / manifest
+   npm run recover    # route verify's gaps to the correct Simkl sub-anime via the franchise map
+   npm run verify     # re-check
+   ```
 
 ## Data
 
