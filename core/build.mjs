@@ -8,6 +8,7 @@ import {
 import { buildEpisodes } from './merge-episodes.mjs';
 import { buildMovies, buildShows, buildPlanToWatch, buildDropped } from './merge-catalog.mjs';
 import { buildNameToTvdb, buildRewatch } from './merge-rewatch.mjs';
+import { checkIdIntegrity } from './verify-ids.mjs';
 
 const DATA = new URL('../data/', import.meta.url);
 const rd = (rel) => readFileSync(new URL(rel, DATA), 'utf8');
@@ -19,6 +20,8 @@ export function buildMaster() {
   const rescueEps = loadRescueEpisodes(rd('rescue/episodes.csv'));
   const rescueShows = loadRescueShows(rd('rescue/shows.csv'));
   const gdprRewatch = loadGdprRewatch(rd('gdpr/rewatched_episode.csv'));
+
+  checkIdIntegrity(refractSeries, rescueShows);
 
   const episodes = buildEpisodes(refractEps, rescueEps);
   const movies = buildMovies(refractMovies);
