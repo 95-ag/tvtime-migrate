@@ -27,7 +27,7 @@ export function planRecovery(master, gapTvdbs, mapFor, overrideFor) {
   };
   for (const ep of master.episodes) {
     const tvdb = String(ep.showTvdb);
-    if (!gaps.has(tvdb) || ep.season === 0) continue;
+    if (!gaps.has(tvdb) || ep.season === 0) continue; // specials (S0) need per-OVA Simkl ids not in the franchise map — handled via overrides/manual, not auto-recovery
     const hit = mapFor(tvdb)?.get(`${ep.season}|${ep.episode}`);
     if (hit) {
       add(hit.simkl, 1, hit.epNum, ep.watchedAt);

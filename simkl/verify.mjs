@@ -122,11 +122,40 @@ export function reconcile(master, library, franchiseCache = {}, overrideFn = loo
       });
   }
 
+  // Plan-to-watch presence. Overlap shows (PTW + watched episodes) are verified via their episodes; skip them.
+  const withEpisodes = new Set(master.episodes.map((e) => String(e.showTvdb)));
+  const ptwShows = (master.planToWatch?.shows ?? []).filter((s) => !withEpisodes.has(String(s.tvdb)));
+  const ptwMovies = master.planToWatch?.movies ?? [];
+  let ptwMatches = 0;
+  for (const s of ptwShows) {
+    if (shows.byTvdb.has(String(s.tvdb)) || anime.tvdbSet.has(String(s.tvdb))) ptwMatches++;
+    else
+      missingFromReadback.push({
+        kind: 'plantowatch-show',
+        ids: { tvdb: Number(s.tvdb) },
+        reason_detail: 'ptw_absent',
+      });
+  }
+  for (const m of ptwMovies) {
+    if (movieByTvdb.has(String(m.tvdb))) ptwMatches++;
+    else
+      missingFromReadback.push({
+        kind: 'plantowatch-movie',
+        ids: { tvdb: Number(m.tvdb) },
+        reason_detail: 'ptw_absent',
+      });
+  }
+  const ptwTotal = ptwShows.length + ptwMovies.length;
+
   const totalEpisodes = master.episodes.length;
   const episodeCoverage = totalEpisodes ? matchedEpisodes / totalEpisodes : 1;
   const dateFidelity = matchedEpisodes ? dateMatches / matchedEpisodes : 1;
   const pass =
-    episodeCoverage >= 0.99 && dateFidelity === 1 && bucketMismatches.length === 0 && movieMatches === watched.length;
+    episodeCoverage >= 0.99 &&
+    dateFidelity === 1 &&
+    bucketMismatches.length === 0 &&
+    movieMatches === watched.length &&
+    ptwMatches === ptwTotal;
   return {
     totalEpisodes,
     matchedEpisodes,
@@ -137,6 +166,8 @@ export function reconcile(master, library, franchiseCache = {}, overrideFn = loo
     bucketMismatches,
     bucketDowngrades,
     dualLibraryTvdbs,
+    ptwMatches,
+    ptwTotal,
     missingFromReadback,
     pass,
   };
@@ -165,6 +196,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
         episodeCoverage: r.episodeCoverage,
         dateFidelity: r.dateFidelity,
         movieMatches: `${r.movieMatches}/${r.watchedMovies}`,
+        plantowatch: `${r.ptwMatches}/${r.ptwTotal}`,
         bucketMismatches: r.bucketMismatches.length,
         bucketDowngrades: r.bucketDowngrades.length,
         dualLibraryTvdbs: r.dualLibraryTvdbs.length,

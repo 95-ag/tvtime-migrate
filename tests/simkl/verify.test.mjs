@@ -178,3 +178,46 @@ test('anime identity date-mismatch → fidelity < 1, pass false', () => {
   assert.ok(r.dateFidelity < 1);
   assert.equal(r.pass, false);
 });
+
+test('plan-to-watch: a pure-PTW show present in the library counts; an absent one lands on the manifest', () => {
+  const master = {
+    episodes: [],
+    shows: [],
+    movies: [],
+    planToWatch: { shows: [{ tvdb: '10' }, { tvdb: '20' }], movies: [{ tvdb: '30' }] },
+  };
+  const library = {
+    shows: [{ show: { ids: { tvdb: '10', simkl: 1 } }, status: 'plantowatch', seasons: [] }],
+    anime: [],
+    movies: [],
+  };
+  const r = reconcile(master, library, {}, () => null);
+  assert.equal(r.ptwTotal, 3); // 2 shows + 1 movie
+  assert.equal(r.ptwMatches, 1); // only tvdb 10 present
+  assert.ok(r.missingFromReadback.some((m) => m.kind === 'plantowatch-show' && String(m.ids.tvdb) === '20'));
+  assert.ok(r.missingFromReadback.some((m) => m.kind === 'plantowatch-movie' && String(m.ids.tvdb) === '30'));
+  assert.equal(r.pass, false); // ptwMatches !== ptwTotal
+});
+
+test('plan-to-watch: an overlap show (PTW + has episodes) is NOT double-checked as PTW', () => {
+  const master = {
+    episodes: [{ showTvdb: '10', season: 1, episode: 1, watchedAt: 'D' }],
+    shows: [],
+    movies: [],
+    planToWatch: { shows: [{ tvdb: '10' }], movies: [] },
+  };
+  const library = {
+    shows: [
+      {
+        show: { ids: { tvdb: '10', simkl: 1 } },
+        status: 'watching',
+        seasons: [{ number: 1, episodes: [{ number: 1, watched_at: 'D' }] }],
+      },
+    ],
+    anime: [],
+    movies: [],
+  };
+  const r = reconcile(master, library, {}, () => null);
+  assert.equal(r.ptwTotal, 0); // the only PTW show has episodes → excluded from PTW check
+  assert.equal(r.episodeCoverage, 1);
+});
