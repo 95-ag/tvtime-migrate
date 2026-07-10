@@ -26,3 +26,53 @@ export function chunkShows(items, size = config.maxShowsPerChunk) {
   for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
   return out;
 }
+
+const RETRYABLE = new Set([429, 500, 502, 503]);
+
+export function makeClient({ clientId, token, fetch = globalThis.fetch, sleep = defaultSleep }) {
+  let lastPostAt = 0;
+
+  async function request(method, path, { params = {}, body } = {}) {
+    for (let attempt = 0; ; attempt++) {
+      if (method === 'POST') {
+        const wait = config.postIntervalMs - (Date.now() - lastPostAt); // 1 POST/sec pacing
+        if (wait > 0) await sleep(wait);
+      }
+      const url = buildUrl(clientId, path, params);
+      const res = await fetch(url, {
+        method,
+        headers: buildHeaders(token),
+        ...(body ? { body: JSON.stringify(body) } : {}),
+      });
+      if (method === 'POST') lastPostAt = Date.now();
+
+      if (res.status === 409) return (await safeJson(res)) ?? { added: {}, not_found: {} }; // duplicate → soft-success (stable shape)
+      if (res.ok) return safeJson(res);
+      if (RETRYABLE.has(res.status) && attempt < config.backoff.maxRetries) {
+        await sleep(backoffMs(attempt));
+        continue;
+      }
+      const err = await safeJson(res);
+      throw new Error(`Simkl ${res.status} ${err?.error ?? 'error'}: ${err?.message ?? ''}`.trim());
+    }
+  }
+
+  return {
+    request,
+    postHistory: (payload) =>
+      request('POST', '/sync/history', { params: { skip_auto_watching: 'yes' }, body: payload }),
+    getAllItems: (type = 'all', status = 'all') =>
+      request('GET', `/sync/all-items/${type}/${status}`, {
+        params: { extended: 'full', episode_watched_at: 'yes', include_all_episodes: 'yes' },
+      }),
+  };
+}
+
+async function safeJson(res) {
+  try {
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+const defaultSleep = (ms) => new Promise((r) => setTimeout(r, ms));
