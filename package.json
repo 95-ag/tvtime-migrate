@@ -14,7 +14,7 @@
     "dry-run": "node simkl/dry-run.mjs",
     "probe": "node --env-file=.env simkl/probe.mjs",
     "import": "node --env-file=.env simkl/import.mjs",
-    "verify": "node simkl/verify.mjs",
+    "verify": "node --env-file=.env simkl/verify.mjs",
     "verify:core": "node core/verify.mjs",
     "format": "biome format --write .",
     "check": "biome check ."
