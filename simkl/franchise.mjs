@@ -1,6 +1,9 @@
 // simkl/franchise.mjs — build an identity map (tvdb season|episode) -> (simkl anime id, simkl episode number)
 // from a show's Simkl anime franchise. The reliable join for anime that Simkl renumbers or splits per-cour.
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { loadToken } from './auth.mjs';
+import { makeClient } from './client.mjs';
+import { requireClientId } from './config.mjs';
 
 const CACHE = 'build/franchise-map.json';
 
@@ -69,4 +72,17 @@ export function loadMap(cache, tvdb) {
   const c = cache?.[String(tvdb)];
   if (c?.type !== 'anime') return null;
   return new Map(Object.entries(c.entries));
+}
+
+if (import.meta.url === `file://${process.argv[1]}`) {
+  const master = JSON.parse(readFileSync('build/master.json', 'utf8'));
+  const client = makeClient({ clientId: requireClientId(), token: loadToken() });
+  const cache = await buildAllMaps(client, master, { refresh: process.argv.includes('--refresh') });
+  const vals = Object.values(cache);
+  const anime = vals.filter((c) => c.type === 'anime').length;
+  const tv = vals.filter((c) => c.type === 'tv').length;
+  const errors = vals.filter((c) => c.type === 'error').length;
+  console.log(
+    `franchise cache: ${vals.length} shows (${anime} anime, ${tv} tv, ${errors} errors) → build/franchise-map.json`,
+  );
 }
