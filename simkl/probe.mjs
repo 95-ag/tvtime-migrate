@@ -1,7 +1,7 @@
 // simkl/probe.mjs — GATE: live idempotency/date/anime-mapping probe on REAL episodes. Requires a token.
-// Picks InuYasha S1E1 (Simkl classifies as anime → validates use_tvdb_anime_seasons routing) + one regular
-// show; sends each, reads it back across the shows+anime+movies libraries, re-sends, and asserts the distinct
-// watched_at survives on the correct (tvdb, season, episode). No bulk import until this passes.
+// Picks the first episode of two distinct shows from the master, sends each, reads it back across the
+// shows+anime+movies libraries, re-sends, and asserts the distinct watched_at survives on the correct
+// (tvdb, season, episode). No bulk import until this passes.
 import { readFileSync } from 'node:fs';
 import { makeClient } from './client.mjs';
 import { requireClientId } from './config.mjs';
@@ -9,15 +9,19 @@ import { loadToken } from './auth.mjs';
 
 const master = JSON.parse(readFileSync('build/master.json', 'utf8'));
 
-const findEp = (pred) => master.episodes.find(pred);
-const animeEp =
-  findEp((e) => String(e.showTvdb) === '71361' && e.season === 1 && e.episode === 1) ??
-  findEp((e) => String(e.showTvdb) === '71361');
-const regularEp = findEp((e) => String(e.showTvdb) !== '71361');
-const cases = [
-  { label: 'regular', ep: regularEp },
-  { label: 'anime (InuYasha)', ep: animeEp },
-].filter((c) => c.ep);
+// Pick the first episode of each of the first two distinct shows in the master (data-independent — Simkl
+// routes each by id and classifies anime itself; the probe validates date-retention, S/E mapping, and
+// idempotency on whichever two real shows appear first).
+const byShow = new Map();
+for (const e of master.episodes) {
+  const t = String(e.showTvdb);
+  if (!byShow.has(t)) byShow.set(t, []);
+  byShow.get(t).push(e);
+}
+const cases = [...byShow.values()].slice(0, 2).map((eps) => {
+  const ep = eps.slice().sort((a, b) => a.season - b.season || a.episode - b.episode)[0];
+  return { label: ep.showTitle || String(ep.showTvdb), ep };
+});
 
 function payloadFor(ep) {
   return {
@@ -70,7 +74,7 @@ for (const { label, ep } of cases) {
 }
 if (failed) {
   console.error(
-    '\nPROBE FAILED — do NOT run `npm run import`. If the anime case failed on S/E, revisit use_tvdb_anime_seasons.',
+    '\nPROBE FAILED — do NOT run `npm run import`. If an anime-classified show failed on S/E, revisit use_tvdb_anime_seasons.',
   );
   process.exitCode = 1;
 } else {

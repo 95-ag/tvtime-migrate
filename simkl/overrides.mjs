@@ -1,16 +1,14 @@
-// simkl/overrides.mjs — manual Simkl-id overrides for shows tvdb-lookup can't resolve (or resolves wrong).
-// The explicit fallback layer. Season-specific entries win over whole-show entries.
-export const OVERRIDES = [
-  { tvdb: '245521', simkl: 25227, type: 'tv' }, // 49 Days — master tvdb stale (Simkl tvdb 475026)
-  { tvdb: '405494', season: 2, simkl: 3161260, type: 'anime' }, // No Doubt In Us S2 — separate Simkl anime
-  { tvdb: '429656', simkl: 2084801, type: 'tv' }, // My Uncanny Destiny — a drama, not anime
-];
+// simkl/overrides.mjs — manual Simkl-id override fallback for shows tvdb-lookup can't resolve (or resolves
+// wrong). Data-independent: the seed ships EMPTY; add your own account-specific entries here (or wire a local
+// gitignored source). Entry shape: { tvdb: string, season?: number, simkl: number, type: 'tv'|'anime'|'movie' }.
+// Example: { tvdb: '245521', simkl: 25227, type: 'tv' }. Season-specific entries win over whole-show entries.
+export const OVERRIDES = [];
 
-export function lookupOverride(tvdb, season) {
+export function lookupOverride(tvdb, season, overrides = OVERRIDES) {
   const t = String(tvdb);
   return (
-    OVERRIDES.find((o) => o.tvdb === t && o.season === season) ??
-    OVERRIDES.find((o) => o.tvdb === t && o.season === undefined) ??
+    overrides.find((o) => o.tvdb === t && o.season === season) ??
+    overrides.find((o) => o.tvdb === t && o.season === undefined) ??
     null
   );
 }
