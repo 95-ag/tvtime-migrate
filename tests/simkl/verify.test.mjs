@@ -2,171 +2,179 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { reconcile } from '../../simkl/verify.mjs';
 
-test('regular show: matches on (season, episode) from the shows library; full coverage + dates → pass', () => {
+const noOverride = () => null;
+
+test('regular show: (tvdb,S,E) match → full coverage + dates → pass', () => {
   const master = {
-    episodes: [
-      { showTvdb: '99999', season: 1, episode: 1, watchedAt: '2021-01-01T00:00:00Z' },
-      { showTvdb: '99999', season: 2, episode: 1, watchedAt: '2021-02-01T00:00:00Z' },
-    ],
-    shows: [{ tvdb: '99999', simklBucket: 'completed' }],
+    episodes: [{ showTvdb: '111', season: 1, episode: 1, watchedAt: 'D' }],
+    shows: [{ tvdb: '111', simklBucket: 'completed' }],
     movies: [],
   };
   const library = {
     shows: [
       {
-        show: { ids: { tvdb: '99999' } },
+        show: { ids: { tvdb: '111', simkl: 5 } },
         status: 'completed',
-        seasons: [
-          { number: 1, episodes: [{ number: 1, watched_at: '2021-01-01T00:00:00Z' }] },
-          { number: 2, episodes: [{ number: 1, watched_at: '2021-02-01T00:00:00Z' }] },
-        ],
+        seasons: [{ number: 1, episodes: [{ number: 1, watched_at: 'D' }] }],
       },
     ],
     anime: [],
     movies: [],
   };
-  const r = reconcile(master, library);
+  const r = reconcile(master, library, {}, noOverride);
   assert.equal(r.episodeCoverage, 1);
   assert.equal(r.dateFidelity, 1);
   assert.equal(r.pass, true);
 });
 
-test('anime: master (season,episode) maps to Simkl season-1 ABSOLUTE numbering by rank; dates verified', () => {
+test('BUG#1 split anime: two sub-anime, different simkl ids, SAME tvdb — BOTH matched', () => {
   const master = {
     episodes: [
-      { showTvdb: '71361', season: 1, episode: 1, watchedAt: '2020-09-23T12:30:57Z' },
-      { showTvdb: '71361', season: 1, episode: 2, watchedAt: '2020-09-23T12:30:58Z' },
-      { showTvdb: '71361', season: 2, episode: 1, watchedAt: '2020-09-24T00:00:00Z' },
+      { showTvdb: '305074', season: 1, episode: 1, watchedAt: 'A' },
+      { showTvdb: '305074', season: 2, episode: 1, watchedAt: 'B' },
     ],
-    shows: [{ tvdb: '71361', simklBucket: 'dropped' }],
+    shows: [{ tvdb: '305074', simklBucket: 'completed' }],
     movies: [],
+  };
+  const franchiseCache = {
+    305074: { type: 'anime', entries: { '1|1': { simkl: 532942, epNum: 1 }, '2|1': { simkl: 595017, epNum: 1 } } },
   };
   const library = {
     shows: [],
     movies: [],
     anime: [
       {
-        show: { ids: { tvdb: '71361' } },
+        show: { ids: { tvdb: '305074', simkl: 532942 } },
+        status: 'completed',
+        seasons: [{ number: 1, episodes: [{ number: 1, watched_at: 'A' }] }],
+      },
+      {
+        show: { ids: { tvdb: '305074', simkl: 595017 } },
+        status: 'completed',
+        seasons: [{ number: 1, episodes: [{ number: 1, watched_at: 'B' }] }],
+      },
+    ],
+  };
+  const r = reconcile(master, library, franchiseCache, noOverride);
+  assert.equal(r.matchedEpisodes, 2);
+  assert.equal(r.dateFidelity, 1);
+  assert.equal(r.episodeCoverage, 1);
+});
+
+test('BUG#3 middle gap does NOT cascade: only the missing episode is flagged, later ones still match by identity', () => {
+  const master = {
+    episodes: [
+      { showTvdb: '1', season: 1, episode: 1, watchedAt: 'A' },
+      { showTvdb: '1', season: 1, episode: 2, watchedAt: 'B' },
+      { showTvdb: '1', season: 1, episode: 3, watchedAt: 'C' },
+    ],
+    shows: [],
+    movies: [],
+  };
+  const franchiseCache = {
+    1: {
+      type: 'anime',
+      entries: { '1|1': { simkl: 9, epNum: 1 }, '1|2': { simkl: 9, epNum: 2 }, '1|3': { simkl: 9, epNum: 3 } },
+    },
+  };
+  const library = {
+    shows: [],
+    movies: [],
+    anime: [
+      {
+        show: { ids: { tvdb: '1', simkl: 9 } },
         status: 'dropped',
         seasons: [
           {
             number: 1,
             episodes: [
-              { number: 1, watched_at: '2020-09-23T12:30:57Z' },
-              { number: 2, watched_at: '2020-09-23T12:30:58Z' },
-              { number: 3, watched_at: '2020-09-24T00:00:00Z' }, // == master S2E1 by absolute rank 3
+              { number: 1, watched_at: 'A' },
+              { number: 3, watched_at: 'C' },
             ],
           },
         ],
       },
     ],
   };
-  const r = reconcile(master, library);
-  assert.equal(r.matchedEpisodes, 3);
+  const r = reconcile(master, library, franchiseCache, noOverride);
+  assert.equal(r.matchedEpisodes, 2);
   assert.equal(r.dateFidelity, 1);
-  assert.equal(r.episodeCoverage, 1);
+  const missed = r.missingFromReadback.filter((m) => m.kind === 'episode');
+  assert.equal(missed.length, 1);
+  assert.equal(missed[0].episode, 2);
 });
 
-test('anime with fewer Simkl episodes than watched: extra ranks are absent_on_simkl (partial coverage)', () => {
-  const master = {
-    episodes: [
-      { showTvdb: '305074', season: 1, episode: 1, watchedAt: '2020-01-01T00:00:00Z' },
-      { showTvdb: '305074', season: 2, episode: 1, watchedAt: '2020-02-01T00:00:00Z' },
-    ],
-    shows: [{ tvdb: '305074', simklBucket: 'completed' }],
-    movies: [],
-  };
+test('BUG#4 anime special is CHECKED against read-back, not auto-missed', () => {
+  const master = { episodes: [{ showTvdb: '1', season: 0, episode: 1, watchedAt: 'S' }], shows: [], movies: [] };
+  const franchiseCache = { 1: { type: 'anime', entries: { '0|1': { simkl: 9, epNum: 25 } } } };
   const library = {
     shows: [],
     movies: [],
     anime: [
       {
-        show: { ids: { tvdb: '305074' } },
+        show: { ids: { tvdb: '1', simkl: 9 } },
         status: 'completed',
-        seasons: [{ number: 1, episodes: [{ number: 1, watched_at: '2020-01-01T00:00:00Z' }] }],
+        seasons: [{ number: 1, episodes: [{ number: 25, watched_at: 'S' }] }],
       },
     ],
   };
-  const r = reconcile(master, library);
+  const r = reconcile(master, library, franchiseCache, noOverride);
   assert.equal(r.matchedEpisodes, 1);
-  assert.ok(r.episodeCoverage < 1);
-  assert.ok(r.missingFromReadback.some((m) => m.reason_detail === 'absent_on_simkl'));
+  assert.equal(r.dateFidelity, 1);
 });
 
-test('anime date mismatch by rank is caught as a fidelity failure', () => {
-  const master = {
-    episodes: [{ showTvdb: '71361', season: 1, episode: 1, watchedAt: '2020-09-23T12:30:57Z' }],
-    shows: [{ tvdb: '71361', simklBucket: 'dropped' }],
-    movies: [],
-  };
+test('BUG#5 a tvdb present in BOTH shows and anime libraries is flagged', () => {
+  const master = { episodes: [], shows: [], movies: [] };
   const library = {
-    shows: [],
+    shows: [{ show: { ids: { tvdb: '77', simkl: 1 } }, seasons: [] }],
+    anime: [{ show: { ids: { tvdb: '77', simkl: 2 } }, seasons: [] }],
     movies: [],
-    anime: [
-      {
-        show: { ids: { tvdb: '71361' } },
-        status: 'dropped',
-        seasons: [{ number: 1, episodes: [{ number: 1, watched_at: '1999-01-01T00:00:00Z' }] }],
-      },
-    ],
   };
-  const r = reconcile(master, library);
-  assert.ok(r.dateFidelity < 1);
+  const r = reconcile(master, library, {}, noOverride);
+  assert.deepEqual(r.dualLibraryTvdbs, ['77']);
+});
+
+test('BUG#6 an unmatched watched movie lands on the manifest with per-movie detail', () => {
+  const master = { episodes: [], shows: [], movies: [{ tvdb: '5', imdb: 'tt9', watchedAt: 'D', watched: true }] };
+  const r = reconcile(master, { shows: [], anime: [], movies: [] }, {}, noOverride);
+  assert.equal(r.movieMatches, 0);
   assert.equal(r.pass, false);
+  assert.ok(r.missingFromReadback.some((m) => m.kind === 'movie' && String(m.ids.tvdb) === '5'));
 });
 
-test('anime season-0 specials are reported as special_unmapped (not silently dropped)', () => {
-  const master = {
-    episodes: [
-      { showTvdb: '71361', season: 0, episode: 1, watchedAt: '2020-01-01T00:00:00Z' },
-      { showTvdb: '71361', season: 1, episode: 1, watchedAt: '2020-09-23T12:30:57Z' },
-    ],
-    shows: [{ tvdb: '71361', simklBucket: 'dropped' }],
-    movies: [],
-  };
-  const library = {
-    shows: [],
-    movies: [],
-    anime: [
-      {
-        show: { ids: { tvdb: '71361' } },
-        status: 'dropped',
-        seasons: [{ number: 1, episodes: [{ number: 1, watched_at: '2020-09-23T12:30:57Z' }] }],
-      },
-    ],
-  };
-  const r = reconcile(master, library);
-  assert.ok(r.missingFromReadback.some((m) => m.reason_detail === 'special_unmapped' && m.season === 0));
-  assert.equal(r.matchedEpisodes, 1); // the regular ep matched
-});
-
-test('completed→watching downgrade is acceptable (not a mismatch); anime movie matched from anime lib', () => {
-  const master = {
-    episodes: [{ showTvdb: '99999', season: 1, episode: 1, watchedAt: '2021-01-01T00:00:00Z' }],
-    shows: [{ tvdb: '99999', simklBucket: 'completed' }],
-    movies: [{ tvdb: '133610', watchedAt: '2021-05-01T00:00:00Z', watched: true }],
-  };
+test('override routes a tv episode to the override simkl id, not the master tvdb', () => {
+  const master = { episodes: [{ showTvdb: '245521', season: 1, episode: 1, watchedAt: 'D' }], shows: [], movies: [] };
+  const override = (tvdb) => (String(tvdb) === '245521' ? { simkl: 25227, type: 'tv' } : null);
   const library = {
     shows: [
       {
-        show: { ids: { tvdb: '99999' } },
-        status: 'watching',
-        seasons: [{ number: 1, episodes: [{ number: 1, watched_at: '2021-01-01T00:00:00Z' }] }],
+        show: { ids: { tvdb: '475026', simkl: 25227 } },
+        status: 'completed',
+        seasons: [{ number: 1, episodes: [{ number: 1, watched_at: 'D' }] }],
       },
     ],
+    anime: [],
+    movies: [],
+  };
+  const r = reconcile(master, library, {}, override);
+  assert.equal(r.matchedEpisodes, 1);
+  assert.equal(r.dateFidelity, 1);
+});
+
+test('anime identity date-mismatch → fidelity < 1, pass false', () => {
+  const master = { episodes: [{ showTvdb: '1', season: 1, episode: 1, watchedAt: 'RIGHT' }], shows: [], movies: [] };
+  const franchiseCache = { 1: { type: 'anime', entries: { '1|1': { simkl: 9, epNum: 1 } } } };
+  const library = {
+    shows: [],
     movies: [],
     anime: [
       {
-        anime_type: 'movie',
-        show: { ids: { tvdb: '133610' } },
-        status: 'completed',
-        last_watched_at: '2021-05-01T00:00:00Z',
+        show: { ids: { tvdb: '1', simkl: 9 } },
+        seasons: [{ number: 1, episodes: [{ number: 1, watched_at: 'WRONG' }] }],
       },
     ],
   };
-  const r = reconcile(master, library);
-  assert.equal(r.bucketMismatches.length, 0);
-  assert.equal(r.bucketDowngrades.length, 1);
-  assert.equal(r.movieMatches, 1);
-  assert.equal(r.pass, true);
+  const r = reconcile(master, library, franchiseCache, noOverride);
+  assert.ok(r.dateFidelity < 1);
+  assert.equal(r.pass, false);
 });

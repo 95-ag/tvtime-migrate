@@ -1,46 +1,60 @@
-// simkl/verify.mjs — read-back reconciliation GATE. reconcile() is pure; the CLI does the sequential fetch.
-import { readFileSync, writeFileSync } from 'node:fs';
+// simkl/verify.mjs — identity-based, franchise-aware read-back reconciliation gate.
+// Matches each master episode by IDENTITY: resolve its target (Simkl anime id + episode number) via the
+// franchise cache or an override, then check that exact entry. Anime read-back is indexed by SIMKL ID (never
+// by tvdb) so split-per-cour shows are fully measured and a middle gap cannot cascade.
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { loadToken } from './auth.mjs';
 import { makeClient } from './client.mjs';
 import { requireClientId } from './config.mjs';
 import { buildManifest } from './manifest.mjs';
+import { lookupOverride } from './overrides.mjs';
 
 const HISTORY_BUCKETS = new Set(['completed', 'watching', 'dropped']);
+const tvdbOf = (e) => String(e.show?.ids?.tvdb ?? e.movie?.ids?.tvdb ?? '');
+const simklOf = (e) => String(e.show?.ids?.simkl ?? e.movie?.ids?.simkl ?? '');
 
-// Read-back entries nest ids under .show (shows/anime) or .movie (movies) — live-verified 2026-07-10.
-const tvdbOf = (entry) => String(entry.show?.ids?.tvdb ?? entry.movie?.ids?.tvdb ?? entry.ids?.tvdb ?? '');
-
-const bySE = (a, b) => a.season - b.season || a.episode - b.episode;
-const bySEback = (a, b) => a.s - b.s || a.e - b.e;
-
-export function reconcile(master, library) {
-  const showEpIndex = new Map(); // regular shows lib: "tvdb|s|e" -> watched_at
-  const animeEps = new Map(); // anime lib: tvdb -> sorted [{s,e,w}] (Simkl season-1 absolute)
+function indexShows(showsLib) {
+  const byTvdb = new Map();
+  const bySimkl = new Map();
   const statusByTvdb = new Map();
-
-  for (const s of library.shows ?? []) {
-    const t = tvdbOf(s);
-    statusByTvdb.set(t, s.status);
+  for (const s of showsLib ?? []) {
+    const eps = new Map();
     for (const se of s.seasons ?? [])
-      for (const e of se.episodes ?? []) showEpIndex.set(`${t}|${se.number}|${e.number}`, e.watched_at);
-  }
-  for (const s of library.anime ?? []) {
-    if (s.anime_type === 'movie') continue; // anime movies handled as movies below
+      for (const e of se.episodes ?? []) eps.set(`${se.number}|${e.number}`, e.watched_at);
     const t = tvdbOf(s);
-    statusByTvdb.set(t, s.status);
-    animeEps.set(
-      t,
-      (s.seasons ?? [])
-        .flatMap((se) => se.episodes.map((e) => ({ s: se.number, e: e.number, w: e.watched_at })))
-        .sort(bySEback),
-    );
+    const sk = simklOf(s);
+    if (t) {
+      byTvdb.set(t, eps);
+      statusByTvdb.set(t, s.status);
+    }
+    if (sk) bySimkl.set(sk, eps);
   }
+  return { byTvdb, bySimkl, statusByTvdb };
+}
 
-  const masterByShow = new Map();
-  for (const ep of master.episodes) {
-    const t = String(ep.showTvdb);
-    if (!masterByShow.has(t)) masterByShow.set(t, []);
-    masterByShow.get(t).push(ep);
+function indexAnime(animeLib) {
+  const bySimkl = new Map();
+  const tvdbSet = new Set();
+  for (const s of animeLib ?? []) {
+    if (s.anime_type === 'movie') continue;
+    const eps = new Map();
+    for (const se of s.seasons ?? []) for (const e of se.episodes ?? []) eps.set(e.number, e.watched_at);
+    bySimkl.set(simklOf(s), eps);
+    const t = tvdbOf(s);
+    if (t) tvdbSet.add(t);
+  }
+  return { bySimkl, tvdbSet };
+}
+
+export function reconcile(master, library, franchiseCache = {}, overrideFn = lookupOverride) {
+  const shows = indexShows(library.shows);
+  const anime = indexAnime(library.anime);
+  const movieByTvdb = new Map();
+  const movieBySimkl = new Map();
+  for (const m of [...(library.movies ?? []), ...(library.anime ?? []).filter((e) => e.anime_type === 'movie')]) {
+    const d = m.watched_at ?? m.last_watched_at;
+    if (tvdbOf(m)) movieByTvdb.set(tvdbOf(m), d);
+    if (simklOf(m)) movieBySimkl.set(simklOf(m), d);
   }
 
   let matchedEpisodes = 0;
@@ -55,68 +69,74 @@ export function reconcile(master, library) {
       ...(detail ? { reason_detail: detail } : {}),
     });
 
-  for (const [t, eps] of masterByShow) {
-    if (animeEps.has(t)) {
-      // Anime: Simkl uses season-1 absolute numbering. Match regular-season episodes by absolute rank;
-      // season-0 specials are not part of the absolute run, so check them as unmapped gaps.
-      const regular = eps.filter((e) => e.season > 0).sort(bySE);
-      const back = animeEps.get(t);
-      for (let i = 0; i < regular.length; i++) {
-        if (i < back.length) {
-          matchedEpisodes++;
-          if (regular[i].watchedAt === back[i].w) dateMatches++;
-          else miss(regular[i], 'date_mismatch');
-        } else miss(regular[i], 'absent_on_simkl');
-      }
-      for (const sp of eps.filter((e) => e.season === 0)) miss(sp, 'special_unmapped');
+  for (const ep of master.episodes) {
+    const tvdb = String(ep.showTvdb);
+    const fr = franchiseCache[tvdb];
+    const ov = overrideFn(tvdb, ep.season);
+    let got;
+    let hadTarget = true;
+    if (fr?.type === 'anime' || ov?.type === 'anime') {
+      const mapHit = fr?.type === 'anime' ? fr.entries?.[`${ep.season}|${ep.episode}`] : null;
+      if (mapHit) got = anime.bySimkl.get(String(mapHit.simkl))?.get(mapHit.epNum);
+      else if (ov?.type === 'anime') got = anime.bySimkl.get(String(ov.simkl))?.get(ep.episode);
+      else hadTarget = false; // anime show but this episode has no map/override target
+    } else if (ov?.type === 'tv') {
+      got = shows.bySimkl.get(String(ov.simkl))?.get(`${ep.season}|${ep.episode}`);
     } else {
-      // Regular (or not-imported) show: match on (tvdb, season, episode) against the shows library.
-      for (const ep of eps) {
-        const key = `${t}|${ep.season}|${ep.episode}`;
-        if (showEpIndex.has(key)) {
-          matchedEpisodes++;
-          if (showEpIndex.get(key) === ep.watchedAt) dateMatches++;
-          else miss(ep, 'date_mismatch');
-        } else miss(ep);
-      }
+      got = shows.byTvdb.get(tvdb)?.get(`${ep.season}|${ep.episode}`);
     }
+    if (got !== undefined) {
+      matchedEpisodes++;
+      if (got === ep.watchedAt) dateMatches++;
+      else miss(ep, 'date_mismatch');
+    } else miss(ep, hadTarget ? 'absent_on_simkl' : 'unmapped');
   }
 
-  // Bucket check. Simkl "intelligently downgrades" completed→watching when not every episode it knows is
-  // watched — that is acceptable Simkl behavior, not an import error, so classify it separately.
+  // Buckets: only for regular tv shows (single well-defined status). Anime status is per-sub-anime → skip.
   const bucketMismatches = [];
   const bucketDowngrades = [];
   for (const s of master.shows) {
     if (!HISTORY_BUCKETS.has(s.simklBucket)) continue;
-    const got = statusByTvdb.get(String(s.tvdb));
+    const t = String(s.tvdb);
+    if (franchiseCache[t]?.type === 'anime' || overrideFn(t)?.type === 'anime') continue;
+    const got = shows.statusByTvdb.get(t);
     if (!got || got === s.simklBucket) continue;
     if (s.simklBucket === 'completed' && got === 'watching')
       bucketDowngrades.push({ tvdb: s.tvdb, expected: s.simklBucket, got });
     else bucketMismatches.push({ tvdb: s.tvdb, expected: s.simklBucket, got });
   }
 
-  const movieEntries = [...(library.movies ?? []), ...(library.anime ?? []).filter((e) => e.anime_type === 'movie')];
-  const movieIndex = new Map(movieEntries.map((m) => [tvdbOf(m), m.watched_at ?? m.last_watched_at]));
+  const dualLibraryTvdbs = [...shows.byTvdb.keys()].filter((t) => anime.tvdbSet.has(t));
+
   let movieMatches = 0;
-  for (const mv of master.movies.filter((m) => m.watched))
-    if (movieIndex.get(String(mv.tvdb)) === mv.watchedAt) movieMatches++;
+  const watched = master.movies.filter((m) => m.watched);
+  for (const mv of watched) {
+    const ov = overrideFn(String(mv.tvdb));
+    const got = ov?.type === 'movie' ? movieBySimkl.get(String(ov.simkl)) : movieByTvdb.get(String(mv.tvdb));
+    if (got === mv.watchedAt) movieMatches++;
+    else
+      missingFromReadback.push({
+        kind: 'movie',
+        ids: { tvdb: Number(mv.tvdb), ...(mv.imdb ? { imdb: mv.imdb } : {}) },
+        reason_detail: got === undefined ? 'absent_on_simkl' : 'date_mismatch',
+      });
+  }
 
   const totalEpisodes = master.episodes.length;
-  const watchedMovies = master.movies.filter((m) => m.watched).length;
   const episodeCoverage = totalEpisodes ? matchedEpisodes / totalEpisodes : 1;
   const dateFidelity = matchedEpisodes ? dateMatches / matchedEpisodes : 1;
   const pass =
-    episodeCoverage >= 0.99 && dateFidelity === 1 && bucketMismatches.length === 0 && movieMatches === watchedMovies;
-
+    episodeCoverage >= 0.99 && dateFidelity === 1 && bucketMismatches.length === 0 && movieMatches === watched.length;
   return {
     totalEpisodes,
     matchedEpisodes,
     episodeCoverage,
     dateFidelity,
     movieMatches,
-    watchedMovies,
+    watchedMovies: watched.length,
     bucketMismatches,
     bucketDowngrades,
+    dualLibraryTvdbs,
     missingFromReadback,
     pass,
   };
@@ -124,13 +144,15 @@ export function reconcile(master, library) {
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   const master = JSON.parse(readFileSync('build/master.json', 'utf8'));
+  const franchiseCache = existsSync('build/franchise-map.json')
+    ? JSON.parse(readFileSync('build/franchise-map.json', 'utf8'))
+    : {};
   const client = makeClient({ clientId: requireClientId(), token: loadToken() });
-  // Sequential per-type, no parallel, no date_from (Simkl anti-suspension). Anime is a separate library.
-  const shows = await client.getAllItems('shows', 'all');
-  const movies = await client.getAllItems('movies', 'all');
-  const anime = await client.getAllItems('anime', 'all');
-  const library = { shows: shows.shows ?? [], movies: movies.movies ?? [], anime: anime.anime ?? [] };
-  const r = reconcile(master, library);
+  const showsR = await client.getAllItems('shows', 'all');
+  const moviesR = await client.getAllItems('movies', 'all');
+  const animeR = await client.getAllItems('anime', 'all');
+  const library = { shows: showsR.shows ?? [], movies: moviesR.movies ?? [], anime: animeR.anime ?? [] };
+  const r = reconcile(master, library, franchiseCache);
   const manifest = buildManifest({
     notFound: { shows: [], movies: [], episodes: [] },
     missingFromReadback: r.missingFromReadback,
@@ -145,6 +167,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
         movieMatches: `${r.movieMatches}/${r.watchedMovies}`,
         bucketMismatches: r.bucketMismatches.length,
         bucketDowngrades: r.bucketDowngrades.length,
+        dualLibraryTvdbs: r.dualLibraryTvdbs.length,
         notImported: manifest.count,
         pass: r.pass,
       },
