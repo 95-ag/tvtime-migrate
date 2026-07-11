@@ -9,6 +9,7 @@ export function reconcile(
   master,
   { historyEpisodes, watchedMovies, watchlistShows, watchlistMovies, favoriteShows, favoriteMovies },
   episodeMap = new Map(),
+  showIdMap = new Map(),
 ) {
   const toMinute = (iso) => (iso ? new Date(iso).toISOString().slice(0, 16) : null);
 
@@ -16,22 +17,33 @@ export function reconcile(
   // episode differently than TheTVDB (e.g. absolute-numbered anime). An episode may be present at EITHER
   // the mapped position (re-imported by recovery) OR its original position (imported fine the first time
   // because our numbering already matched Trakt's) — so check both and match on whichever exists.
+  // Stale-tvdb resolution (resolve-shows.mjs) maps our showTvdb -> a DIFFERENT Trakt show id (same
+  // episode numbering) — add that key too when the show is in the map.
   const keysFor = (ep) => {
     const original = `${ep.showTvdb}|${ep.season}|${ep.episode}`;
     const mapped = episodeMap.get(String(ep.epTvdb));
-    return mapped ? [`${ep.showTvdb}|${mapped.season}|${mapped.number}`, original] : [original];
+    const keys = mapped ? [`${ep.showTvdb}|${mapped.season}|${mapped.number}`, original] : [original];
+    if (showIdMap.has(String(ep.showTvdb))) {
+      keys.push(`trakt:${showIdMap.get(String(ep.showTvdb))}|${ep.season}|${ep.episode}`);
+    }
+    return keys;
   };
 
   const epIndex = new Map();
   for (const h of historyEpisodes ?? []) {
     const tvdb = h.show?.ids?.tvdb;
-    if (tvdb == null || !h.episode) continue;
-    const key = `${tvdb}|${h.episode.season}|${h.episode.number}`;
-    const rec = epIndex.get(key) ?? { plays: 0, minutes: new Set() };
-    rec.plays += 1;
-    const m = toMinute(h.watched_at);
-    if (m) rec.minutes.add(m);
-    epIndex.set(key, rec);
+    const trakt = h.show?.ids?.trakt;
+    if (!h.episode) continue;
+    const keys = [];
+    if (tvdb != null) keys.push(`${tvdb}|${h.episode.season}|${h.episode.number}`);
+    if (trakt != null) keys.push(`trakt:${trakt}|${h.episode.season}|${h.episode.number}`);
+    for (const key of keys) {
+      const rec = epIndex.get(key) ?? { plays: 0, minutes: new Set() };
+      rec.plays += 1;
+      const m = toMinute(h.watched_at);
+      if (m) rec.minutes.add(m);
+      epIndex.set(key, rec);
+    }
   }
 
   const episodesByOriginalKey = new Map();
@@ -210,6 +222,9 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const episodeMap = existsSync('build/trakt-episode-map.json')
     ? new Map(Object.entries(JSON.parse(readFileSync('build/trakt-episode-map.json', 'utf8'))))
     : new Map();
+  const showIdMap = existsSync('build/trakt-show-map.json')
+    ? new Map(Object.entries(JSON.parse(readFileSync('build/trakt-show-map.json', 'utf8'))))
+    : new Map();
 
   const r = reconcile(
     master,
@@ -222,6 +237,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       favoriteMovies,
     },
     episodeMap,
+    showIdMap,
   );
   const payload = JSON.parse(readFileSync('build/trakt-payload.json', 'utf8'));
   const manifest = buildManifest({

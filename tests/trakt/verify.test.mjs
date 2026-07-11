@@ -160,4 +160,34 @@ describe('reconcile', () => {
     assert.equal(r.dateFidelity, 1);
     assert.ok(!r.missingFromReadback.some((x) => x.season === 5 && x.episode === 3));
   });
+
+  it('matches an episode via the show-id map when the show is imported under a different trakt id', () => {
+    // ourTvdb 500 -> trakt 777 (stale-tvdb resolution); numbering is unchanged, so the read-back is
+    // keyed by the resolved trakt id with our original season/episode.
+    const m = {
+      ...master,
+      episodes: [...master.episodes, { showTvdb: 500, season: 1, episode: 1, watchedAt: '2023-07-01T00:00:00.000Z' }],
+    };
+    const rbWithMap = {
+      ...readback,
+      historyEpisodes: [
+        ...readback.historyEpisodes,
+        {
+          watched_at: '2023-07-01T00:00:00.000Z',
+          episode: { season: 1, number: 1 },
+          show: { ids: { trakt: 777, tvdb: null } },
+        },
+      ],
+    };
+
+    const withoutMap = reconcile(m, rbWithMap);
+    assert.equal(withoutMap.matchedEpisodes, 3);
+    assert.ok(withoutMap.missingFromReadback.some((x) => x.tvdb === 500));
+
+    const showIdMap = new Map([['500', 777]]);
+    const withMap = reconcile(m, rbWithMap, new Map(), showIdMap);
+    assert.equal(withMap.matchedEpisodes, 4);
+    assert.equal(withMap.dateFidelity, 1);
+    assert.ok(!withMap.missingFromReadback.some((x) => x.tvdb === 500));
+  });
 });
