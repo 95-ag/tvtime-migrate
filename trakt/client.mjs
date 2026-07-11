@@ -17,7 +17,7 @@ const RETRYABLE = new Set([429, 500, 502, 503]);
 export function makeClient({ clientId, token, fetch = globalThis.fetch, sleep = defaultSleep }) {
   let lastPostAt = 0;
 
-  async function request(method, path, { params = {}, body } = {}) {
+  async function requestRaw(method, path, { params = {}, body } = {}) {
     const url = new URL(path, config.baseUrl);
     for (const [k, v] of Object.entries(params)) if (v != null) url.searchParams.set(k, String(v));
 
@@ -33,7 +33,7 @@ export function makeClient({ clientId, token, fetch = globalThis.fetch, sleep = 
       });
       if (method === 'POST') lastPostAt = Date.now();
 
-      if (res.ok) return res.json().catch(() => null);
+      if (res.ok) return res;
       if (RETRYABLE.has(res.status) && attempt < config.backoff.maxRetries) {
         const retryAfter = res.headers?.get?.('Retry-After');
         await sleep(retryAfter ? Number(retryAfter) * 1000 : backoffMs(attempt));
@@ -44,6 +44,30 @@ export function makeClient({ clientId, token, fetch = globalThis.fetch, sleep = 
     }
   }
 
+  async function request(method, path, opts) {
+    const res = await requestRaw(method, path, opts);
+    return res.json().catch(() => null);
+  }
+
+  async function requestMeta(method, path, opts) {
+    const res = await requestRaw(method, path, opts);
+    return { body: await res.json().catch(() => null), headers: res.headers };
+  }
+
+  async function getAll(path, params = {}) {
+    const all = [];
+    let page = 1;
+    let pageCount = 1;
+    do {
+      const { body, headers } = await requestMeta('GET', path, { params: { ...params, page, limit: 1000 } });
+      if (Array.isArray(body)) all.push(...body);
+      const pc = Number(headers?.get?.('x-pagination-page-count'));
+      pageCount = Number.isFinite(pc) && pc > 0 ? pc : 1;
+      page += 1;
+    } while (page <= pageCount);
+    return all;
+  }
+
   return {
     request,
     get: (path, params) => request('GET', path, { params }),
@@ -51,10 +75,10 @@ export function makeClient({ clientId, token, fetch = globalThis.fetch, sleep = 
     postHistory: (payload) => request('POST', '/sync/history', { body: payload }),
     postWatchlist: (payload) => request('POST', '/sync/watchlist', { body: payload }),
     postFavorites: (payload) => request('POST', '/sync/favorites', { body: payload }),
-    getWatchedShows: () => request('GET', '/sync/watched/shows', { params: { extended: 'full' } }),
-    getWatchedMovies: () => request('GET', '/sync/watched/movies', { params: { extended: 'full' } }),
-    getWatchlist: (type) => request('GET', `/sync/watchlist/${type}`, { params: { extended: 'full' } }),
-    getFavorites: (type) => request('GET', `/sync/favorites/${type}`, { params: { extended: 'full' } }),
+    getWatchedShows: () => getAll('/sync/watched/shows', { extended: 'full' }),
+    getWatchedMovies: () => getAll('/sync/watched/movies', { extended: 'full' }),
+    getWatchlist: (type) => getAll(`/sync/watchlist/${type}`, { extended: 'full' }),
+    getFavorites: (type) => getAll(`/sync/favorites/${type}`, { extended: 'full' }),
     getUserLists: () => request('GET', '/users/me/lists'),
     createList: (body) => request('POST', '/users/me/lists', { body }),
     addToList: (slug, body) => request('POST', `/users/me/lists/${slug}/items`, { body }),
