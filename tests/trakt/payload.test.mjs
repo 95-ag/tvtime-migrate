@@ -1,6 +1,11 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildHistoryPayload, buildRewatchPayload, buildWatchlistPayload } from '../../trakt/payload.mjs';
+import {
+  buildHistoryPayload,
+  buildRewatchPayload,
+  buildWatchlistPayload,
+  sameDateStamp,
+} from '../../trakt/payload.mjs';
 
 const master = {
   episodes: [
@@ -86,6 +91,19 @@ describe('buildHistoryPayload — movies', () => {
     assert.equal(skippedMovies.length, 1);
     assert.equal(skippedMovies[0].reason, 'no_imdb_or_title_year');
     assert.equal(skippedMovies[0].tvdb, 5);
+  });
+});
+
+describe('sameDateStamp', () => {
+  it('skips the base minute when the base play was watched at minute 1 (00:01:52)', () => {
+    // baseMinute = 1 -> i=1 must NOT collide with the base play's own minute 1.
+    assert.equal(sameDateStamp('2022-07-08T00:01:52Z', 1), '2022-07-08T00:00:00.000Z');
+  });
+  it('gives a distinct minute for i=2, still skipping the base minute', () => {
+    assert.equal(sameDateStamp('2022-07-08T00:01:52Z', 2), '2022-07-08T00:02:00.000Z');
+  });
+  it('a normal-time base (07:30, baseMinute=450) is unaffected by the skip for i=1', () => {
+    assert.equal(sameDateStamp('2022-07-08T07:30:00Z', 1), '2022-07-08T00:00:00.000Z');
   });
 });
 

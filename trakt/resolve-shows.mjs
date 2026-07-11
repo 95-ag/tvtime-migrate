@@ -6,6 +6,7 @@ import { requireEnv } from './config.mjs';
 import { loadToken } from './auth.mjs';
 import { makeClient, chunkShows } from './client.mjs';
 import { findOrCreateList } from './lists.mjs';
+import { sameDateStamp, sentinelStamp } from './payload.mjs';
 
 const RESOLUTION_FILE = 'build/trakt-show-resolution.json';
 const SHOW_MAP_FILE = 'build/trakt-show-map.json';
@@ -40,15 +41,6 @@ export function pickMatch(ourTitle, candidates) {
     return byYear.length === 1 ? byYear[0] : null; // ambiguous if >1
   }
   return exact.length === 1 ? exact[0] : null; // no year: only accept a unique exact-title match
-}
-
-function sameDateStamp(baseIso, i) {
-  const d = new Date(baseIso);
-  const dayStartMs = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
-  return new Date(dayStartMs + i * 60000).toISOString();
-}
-function sentinelStamp(i) {
-  return new Date(i * 60000).toISOString();
 }
 
 function missingByShow(report) {

@@ -6,21 +6,11 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { requireEnv } from './config.mjs';
 import { loadToken } from './auth.mjs';
 import { makeClient, chunkShows } from './client.mjs';
+import { sameDateStamp, sentinelStamp } from './payload.mjs';
 
 const EPISODE_MAP_FILE = 'build/trakt-episode-map.json';
 const STATE_FILE = 'build/trakt-recover-state.json';
 const REPORT_FILE = 'build/trakt-recover-report.json';
-
-// Same synthetic-timestamp scheme as payload.mjs's buildRewatchPayload: extra plays reuse the
-// episode's real watch DATE at distinct minutes; a 1970 sentinel + counter when no base date exists.
-function sameDateStamp(baseIso, i) {
-  const d = new Date(baseIso);
-  const dayStartMs = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
-  return new Date(dayStartMs + i * 60000).toISOString();
-}
-function sentinelStamp(i) {
-  return new Date(i * 60000).toISOString();
-}
 
 function missingEpisodesFromReport(report) {
   return (report?.missingFromReadback ?? []).filter((m) => m.kind === 'episode' && m.reason === 'absent');

@@ -190,4 +190,34 @@ describe('reconcile', () => {
     assert.equal(withMap.dateFidelity, 1);
     assert.ok(!withMap.missingFromReadback.some((x) => x.tvdb === 500));
   });
+
+  it('matches an episode via the season-split map when a later season is a separate Trakt show', () => {
+    // showTvdb 600 season 2 is a season-split -> Trakt show 888, re-numbered under its own Season 1
+    // with our original episode number kept.
+    const m = {
+      ...master,
+      episodes: [...master.episodes, { showTvdb: 600, season: 2, episode: 3, watchedAt: '2023-08-01T00:00:00.000Z' }],
+    };
+    const rbWithSplit = {
+      ...readback,
+      historyEpisodes: [
+        ...readback.historyEpisodes,
+        {
+          watched_at: '2023-08-01T00:00:00.000Z',
+          episode: { season: 1, number: 3 },
+          show: { ids: { trakt: 888, tvdb: null } },
+        },
+      ],
+    };
+
+    const withoutMap = reconcile(m, rbWithSplit);
+    assert.equal(withoutMap.matchedEpisodes, 3);
+    assert.ok(withoutMap.missingFromReadback.some((x) => x.tvdb === 600 && x.season === 2 && x.episode === 3));
+
+    const seasonSplitMap = new Map([['600|2', 888]]);
+    const withMap = reconcile(m, rbWithSplit, new Map(), new Map(), seasonSplitMap);
+    assert.equal(withMap.matchedEpisodes, 4);
+    assert.equal(withMap.dateFidelity, 1);
+    assert.ok(!withMap.missingFromReadback.some((x) => x.tvdb === 600 && x.season === 2 && x.episode === 3));
+  });
 });

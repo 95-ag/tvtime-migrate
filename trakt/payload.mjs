@@ -75,12 +75,17 @@ export function buildHistoryPayload(master) {
 // COUNT per episode but no rewatch dates, so extra plays reuse the episode's real watch DATE at
 // distinct times (i minutes past midnight of that date). Only the count is real; the intra-day times
 // are synthetic. If an episode has no base date, fall back to a 1970 sentinel date + counter.
-function sameDateStamp(baseIso, i) {
+// Skips the base play's OWN minute-of-day so an episode watched at 00:0i doesn't collide with its
+// i-th extra play (Trakt dedups identical minutes) — e.g. base watched at 00:01:52 -> baseMinute=1,
+// so i=1 lands on minute 0 instead of colliding with the base play's minute 1.
+export function sameDateStamp(baseIso, i) {
   const d = new Date(baseIso);
   const dayStartMs = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
-  return new Date(dayStartMs + i * 60000).toISOString(); // i minutes past midnight of the watch date
+  const baseMinute = Math.floor((d.getTime() - dayStartMs) / 60000);
+  const minute = i - 1 < baseMinute ? i - 1 : i; // i-th value from 0,1,2,… excluding baseMinute
+  return new Date(dayStartMs + minute * 60000).toISOString();
 }
-function sentinelStamp(i) {
+export function sentinelStamp(i) {
   return new Date(i * 60000).toISOString(); // 1970-01-01T00:0i — obviously synthetic, distinct
 }
 

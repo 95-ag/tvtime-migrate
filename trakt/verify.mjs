@@ -10,6 +10,7 @@ export function reconcile(
   { historyEpisodes, watchedMovies, watchlistShows, watchlistMovies, favoriteShows, favoriteMovies },
   episodeMap = new Map(),
   showIdMap = new Map(),
+  seasonSplitMap = new Map(),
 ) {
   const toMinute = (iso) => (iso ? new Date(iso).toISOString().slice(0, 16) : null);
 
@@ -19,12 +20,18 @@ export function reconcile(
   // because our numbering already matched Trakt's) — so check both and match on whichever exists.
   // Stale-tvdb resolution (resolve-shows.mjs) maps our showTvdb -> a DIFFERENT Trakt show id (same
   // episode numbering) — add that key too when the show is in the map.
+  // Season-split recovery (season-splits.mjs) maps our (showTvdb, season) -> a DIFFERENT Trakt show id,
+  // re-numbered under that show's Season 1 with our original episode numbers — add that key too.
   const keysFor = (ep) => {
     const original = `${ep.showTvdb}|${ep.season}|${ep.episode}`;
     const mapped = episodeMap.get(String(ep.epTvdb));
     const keys = mapped ? [`${ep.showTvdb}|${mapped.season}|${mapped.number}`, original] : [original];
     if (showIdMap.has(String(ep.showTvdb))) {
       keys.push(`trakt:${showIdMap.get(String(ep.showTvdb))}|${ep.season}|${ep.episode}`);
+    }
+    const splitTraktId = seasonSplitMap.get(`${ep.showTvdb}|${ep.season}`);
+    if (splitTraktId != null) {
+      keys.push(`trakt:${splitTraktId}|1|${ep.episode}`);
     }
     return keys;
   };
@@ -225,6 +232,9 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const showIdMap = existsSync('build/trakt-show-map.json')
     ? new Map(Object.entries(JSON.parse(readFileSync('build/trakt-show-map.json', 'utf8'))))
     : new Map();
+  const seasonSplitMap = existsSync('build/trakt-season-split-map.json')
+    ? new Map(Object.entries(JSON.parse(readFileSync('build/trakt-season-split-map.json', 'utf8'))))
+    : new Map();
 
   const r = reconcile(
     master,
@@ -238,6 +248,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     },
     episodeMap,
     showIdMap,
+    seasonSplitMap,
   );
   const payload = JSON.parse(readFileSync('build/trakt-payload.json', 'utf8'));
   const manifest = buildManifest({

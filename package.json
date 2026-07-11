@@ -25,6 +25,7 @@
     "verify:trakt": "node --env-file=.env trakt/verify.mjs",
     "recover:trakt": "node --env-file=.env trakt/recover.mjs",
     "resolve:trakt": "node --env-file=.env trakt/resolve-shows.mjs",
+    "split:trakt": "node --env-file=.env trakt/season-splits.mjs",
     "format": "biome format --write .",
     "check": "biome check ."
   },
