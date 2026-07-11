@@ -32,7 +32,7 @@ export function buildMaster() {
   const shows = buildShows(refractSeries, rescueShows);
   const planToWatch = buildPlanToWatch(refractSeries, rescueShows, refractMovies);
   const droppedShows = buildDropped(refractSeries);
-  const rewatch = buildRewatch(gdprRewatch, buildNameToTvdb(shows));
+  const { bridged: rewatch, dropped: rewatchDropped } = buildRewatch(gdprRewatch, buildNameToTvdb(shows));
 
   const counts = {
     episodes: episodes.length,
@@ -43,8 +43,9 @@ export function buildMaster() {
     droppedShows: droppedShows.length,
     rewatchEpisodes: rewatch.length,
     rewatchPlays: rewatch.reduce((a, r) => a + r.plays, 0),
+    rewatchDropped: rewatchDropped.length,
   };
-  return { counts, episodes, movies, shows, planToWatch, droppedShows, rewatch };
+  return { counts, episodes, movies, shows, planToWatch, droppedShows, rewatch, rewatchDropped };
 }
 
 function main() {
