@@ -7,18 +7,22 @@ import { buildManifest } from './manifest.mjs';
 
 export function reconcile(
   master,
-  { watchedShows, watchedMovies, watchlistShows, watchlistMovies, favoriteShows, favoriteMovies },
+  { historyEpisodes, watchedMovies, watchlistShows, watchlistMovies, favoriteShows, favoriteMovies },
 ) {
-  const showIndex = new Map();
-  for (const entry of watchedShows ?? []) {
-    const tvdb = String(entry.show?.ids?.tvdb ?? '');
-    if (!tvdb) continue;
-    const eps = new Map();
-    for (const se of entry.seasons ?? [])
-      for (const e of se.episodes ?? [])
-        eps.set(`${se.number}|${e.number}`, { plays: e.plays, last_watched_at: e.last_watched_at });
-    showIndex.set(tvdb, eps);
+  const toMinute = (iso) => (iso ? new Date(iso).toISOString().slice(0, 16) : null);
+
+  const epIndex = new Map();
+  for (const h of historyEpisodes ?? []) {
+    const tvdb = h.show?.ids?.tvdb;
+    if (tvdb == null || !h.episode) continue;
+    const key = `${tvdb}|${h.episode.season}|${h.episode.number}`;
+    const rec = epIndex.get(key) ?? { plays: 0, minutes: new Set() };
+    rec.plays += 1;
+    const m = toMinute(h.watched_at);
+    if (m) rec.minutes.add(m);
+    epIndex.set(key, rec);
   }
+
   const rewatchIndex = new Map();
   for (const r of master.rewatch ?? []) rewatchIndex.set(`${r.showTvdb}|${r.season}|${r.episode}`, r.plays);
 
@@ -28,7 +32,7 @@ export function reconcile(
     rewatchTotal = 0;
   const missingFromReadback = [];
   for (const ep of master.episodes) {
-    const found = showIndex.get(String(ep.showTvdb))?.get(`${ep.season}|${ep.episode}`);
+    const found = epIndex.get(`${ep.showTvdb}|${ep.season}|${ep.episode}`);
     if (!found) {
       missingFromReadback.push({
         kind: 'episode',
@@ -55,7 +59,8 @@ export function reconcile(
           got: found.plays,
         });
     } else {
-      if (!ep.watchedAt || found.last_watched_at === ep.watchedAt) dateFidelityEpisodes++;
+      const want = toMinute(ep.watchedAt);
+      if (!ep.watchedAt || found.minutes.has(want)) dateFidelityEpisodes++;
       else
         missingFromReadback.push({
           kind: 'episode',
@@ -63,27 +68,50 @@ export function reconcile(
           season: ep.season,
           episode: ep.episode,
           reason: 'date_mismatch',
-          expected: ep.watchedAt,
-          got: found.last_watched_at,
+          expected: want,
         });
     }
   }
 
-  const movieIndex = new Map();
-  for (const m of watchedMovies ?? []) if (m.movie?.ids?.imdb) movieIndex.set(m.movie.ids.imdb, m.last_watched_at);
-  let movieMatches = 0;
+  // Movies: strict imdb match for movies WITH imdb; best-effort title+year for the
+  // few sent without imdb (unresolved uuid->imdb), which never fail the gate.
+  const movieByImdb = new Map();
+  const movieByTitleYear = new Map();
+  for (const m of watchedMovies ?? []) {
+    const mv = m.movie ?? {};
+    const lw = toMinute(m.last_watched_at);
+    if (mv.ids?.imdb) movieByImdb.set(mv.ids.imdb, lw);
+    if (mv.title && mv.year) movieByTitleYear.set(`${String(mv.title).toLowerCase()}|${mv.year}`, lw);
+  }
   const watched = master.movies.filter((m) => m.watched);
-  for (const mv of watched) {
-    const got = movieIndex.get(mv.imdb);
-    if (got === mv.watchedAt || (got && !mv.watchedAt)) movieMatches++;
+  const withImdb = watched.filter((m) => m.imdb);
+  const withoutImdb = watched.filter((m) => !m.imdb);
+  let movieMatches = 0;
+  for (const mv of withImdb) {
+    const got = movieByImdb.get(mv.imdb);
+    const wantMinute = toMinute(mv.watchedAt);
+    if (got !== undefined && (got === wantMinute || (got && !mv.watchedAt))) movieMatches++;
     else
       missingFromReadback.push({
         kind: 'movie',
         imdb: mv.imdb,
         title: mv.title,
         reason: got === undefined ? 'absent' : 'date_mismatch',
-        expected: mv.watchedAt,
+        expected: wantMinute,
         got,
+      });
+  }
+  let movieTitleYearMatches = 0;
+  const unverifiableMovies = [];
+  for (const mv of withoutImdb) {
+    const key = mv.title && mv.year ? `${String(mv.title).toLowerCase()}|${mv.year}` : null;
+    if (key && movieByTitleYear.has(key)) movieTitleYearMatches++;
+    else
+      unverifiableMovies.push({
+        kind: 'movie',
+        title: mv.title,
+        year: mv.year,
+        reason: 'sent_by_title_year_unverified',
       });
   }
 
@@ -126,7 +154,7 @@ export function reconcile(
     episodeCoverage >= 0.99 &&
     dateFidelity === 1 &&
     rewatchMatches === rewatchTotal &&
-    movieMatches === watched.length &&
+    movieMatches === withImdb.length &&
     ptwMatches === ptwTotal &&
     favMatches === favTotal;
 
@@ -138,7 +166,9 @@ export function reconcile(
     rewatchMatches,
     rewatchTotal,
     movieMatches,
-    watchedMovies: watched.length,
+    moviesWithImdb: withImdb.length,
+    movieTitleYearMatches,
+    unverifiableMovies,
     ptwMatches,
     ptwTotal,
     favMatches,
@@ -151,7 +181,7 @@ export function reconcile(
 if (import.meta.url === `file://${process.argv[1]}`) {
   const master = JSON.parse(readFileSync('build/master.json', 'utf8'));
   const client = makeClient({ clientId: requireEnv('TRAKT_CLIENT_ID'), token: loadToken() });
-  const watchedShows = await client.getWatchedShows();
+  const historyEpisodes = await client.getHistory('episodes');
   const watchedMovies = await client.getWatchedMovies();
   const watchlistShows = await client.getWatchlist('shows');
   const watchlistMovies = await client.getWatchlist('movies');
@@ -159,7 +189,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const favoriteMovies = await client.getFavorites('movies');
 
   const r = reconcile(master, {
-    watchedShows,
+    historyEpisodes,
     watchedMovies,
     watchlistShows,
     watchlistMovies,
@@ -182,10 +212,11 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       {
         episodeCoverage: `${(r.episodeCoverage * 100).toFixed(2)}%`,
         dateFidelity: `${(r.dateFidelity * 100).toFixed(2)}%`,
-        movies: `${r.movieMatches}/${r.watchedMovies}`,
+        movies: `${r.movieMatches}/${r.moviesWithImdb}`,
+        rewatch: `${r.rewatchMatches}/${r.rewatchTotal}`,
+        unverifiableMovies: r.unverifiableMovies.length,
         ptw: `${r.ptwMatches}/${r.ptwTotal}`,
         favorites: `${r.favMatches}/${r.favTotal}`,
-        rewatchMatches: r.rewatchMatches,
         notImported: manifest.count,
         pass: r.pass,
       },
