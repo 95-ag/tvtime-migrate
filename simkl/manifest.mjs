@@ -16,7 +16,7 @@ function imdbOf(item) {
 }
 
 function showTitle(showByTvdb, tvdb) {
-  return showByTvdb.get(String(tvdb)) ?? `TV show #${tvdb}`;
+  return showByTvdb.get(String(tvdb)) || `TV show #${tvdb}`; // || so an empty title falls back too
 }
 
 function movieLabel(movieByImdb, item) {

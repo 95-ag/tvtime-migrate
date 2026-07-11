@@ -27,7 +27,7 @@ const WATCHLIST_REASONS = new Set(['absent_from_watchlist']);
 const REWATCH_REASONS = new Set(['rewatch_play_count', 'unbridged_rewatch']);
 
 function showTitle(showByTvdb, tvdb) {
-  return showByTvdb.get(String(tvdb)) ?? `TV show #${tvdb}`;
+  return showByTvdb.get(String(tvdb)) || `TV show #${tvdb}`; // || so an empty title falls back too
 }
 
 function movieLabel(movieByImdb, item) {
