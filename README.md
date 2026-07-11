@@ -43,23 +43,23 @@ This tool uploads through each service's **history API** instead, which keeps **
 
 Run end-to-end on one real TV Time account (~15,600 episodes) into **both** services, the final verification reported:
 
-| What | Simkl | Trakt |
+| From your TV Time profile | Simkl | Trakt |
 |---|---|---|
-| Episodes imported with their real dates | **15,588 / 15,638 — 99.68%** | **15,567 / 15,638 — 99.55%** |
-| Date accuracy | **100%** | **100%** |
-| Movies | **131 / 136** | **135 / 136** |
-| Plan-to-watch | **46 / 50** | **48 / 50** |
-| Rewatch plays | — *(Simkl VIP only)* | **1,721 / 1,721** |
-| Favorites & lists | — *(not supported)* | **41 favorites + 5 lists** |
+| Episodes watched (with the real date) | **15,588 / 15,638 — 99.68%** | **15,567 / 15,638 — 99.55%** |
+| Watch dates kept exactly | **100%** | **100%** |
+| Movies watched | **131 / 136** | **135 / 136** |
+| Watchlist (want to watch) | **46 / 50** | **48 / 50** |
+| Rewatches | — *(Simkl VIP only)* | **1,721 / 1,721** |
+| Favorites & custom lists | — *(not supported)* | **41 favorites + 5 lists** |
 
 **What's actually in those gaps** — almost everything left behind is something the target's catalogue simply doesn't have, so there was nowhere to put it:
 
-- **Specials and stray episodes** Trakt/Simkl haven't catalogued — e.g. a few *Friends* and *Coroner's Diary* specials, and single episodes of a handful of shows.
-- **A newer web-drama or two** not yet listed on the target.
-- **One anime OVA** (*Wotakoi: Love is Hard for Otaku OVA 3*), plus a couple of plan-to-watch titles the target doesn't carry (like the 1995 anime film *Memories*).
-- **A counting quirk, not a real gap:** TV Time splits some daily dramas into twice as many episodes — *Homemade Love Story* shows up as 100 half-episodes where Trakt has the 50 full ones, so 50 "missing halves" are counted that were never separate episodes.
+- **Specials and stray episodes** the target hasn't catalogued.
+- **Newer shows** not yet listed on the target.
+- **The occasional anime OVA or watchlist title** the target doesn't carry.
+- **A counting quirk, not a real gap:** TV Time splits some daily dramas into more episodes than the target lists (each aired half counted separately), so those extra "halves" get counted as missing when they were never separate episodes.
 
-Every one of these is named in the run's report ([Where to find your results](#where-to-find-your-results)) — nothing is dropped silently. (The two movie figures use different denominators: Trakt matches movies by IMDb id — 132 of the 133 that had one, plus 3 more by title + year, with 1 OVA absent — while Simkl matches all 136 by TheTVDB id.)
+Every one of these is named in the run's report ([Where to find your results](#where-to-find-your-results)) — nothing is dropped silently. (The two movie figures use different denominators: Trakt matches movies by IMDb id — 132 of the 133 that had one, plus 3 more by title + year, with 1 not in the catalogue — while Simkl matches all 136 by TheTVDB id.)
 
 ## Step 1 — Back up your TV Time data (do this first)
 
