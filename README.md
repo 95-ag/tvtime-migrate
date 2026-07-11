@@ -10,7 +10,7 @@ Simkl and Trakt both offer a TV Time / CSV import, but those lose most of your d
 
 - They keep only **one date per show** (assuming you watched it straight through) — every episode's real watch date is lost.
 - They **drop your rewatches** completely.
-- Trakt's official "import from TV Time" has been **broken** for a long time.
+- Trakt's official "import from TV Time" historically didn't bring everything across. *(Trakt may have improved it since — this tool predates that and hasn't been re-tested against the current version, so check it yourself if you'd prefer the built-in route.)*
 
 This tool uploads through each service's **history API** instead, which keeps **every episode's actual watch date**, plus rewatches, movies, plan-to-watch, favorites, and your custom lists.
 
@@ -31,6 +31,21 @@ This tool uploads through each service's **history API** instead, which keeps **
 - Only titles that exist in **Trakt/Simkl's own catalog** can be imported — a few very new or obscure shows may not be there. The tool lists everything it couldn't import, so nothing disappears silently.
 - Trakt stores watch times **to the minute**, so imported dates are accurate to the minute (not the second).
 - There's no single TV Time export with everything, so you gather a few files first (Step 1). This takes some patience.
+
+## Proven on a real library
+
+Run end-to-end on one real TV Time account (~15,600 episodes) into Trakt, the final verification reported:
+
+| What | Result |
+|---|---|
+| Episodes imported with their real dates | **15,567 / 15,638 — 99.55%** |
+| Date accuracy | **100%** |
+| Rewatch plays | **1,721 / 1,721** |
+| Movies | **132 / 133** |
+| Plan-to-watch | **48 / 50** |
+| Favorites | **41 / 41** |
+
+The handful not imported were titles missing from Trakt's own catalog — every one is listed in the run's report ([Where to find your results](#where-to-find-your-results)), never dropped silently.
 
 ## Step 1 — Back up your TV Time data (do this first)
 
@@ -67,7 +82,7 @@ data/
   gdpr/      rewatched_episode.csv
 ```
 
-You don't need to rename anything — the `*` is just whatever date is in the filename. Your `data` folder stays on your computer; nothing is uploaded except the history you choose to import.
+Each export (especially the GDPR ZIP) contains **many** files — you only need the specific ones listed above; ignore everything else. You don't need to rename anything either — the `*` is just whatever date is in the filename. Your `data` folder stays on your computer; nothing is uploaded except the history you choose to import.
 
 > Also handy as a spare backup (not used by this tool): the **[TV Time Data Extractor](https://chromewebstore.google.com/detail/tv-time-data-extractor/jmpoblamjmpbhnggdihhcoejomkpkgpp)** extension makes a simple CSV of your data.
 
@@ -130,7 +145,19 @@ Trakt does **not** ignore duplicates, so **clear your Trakt history first**: go 
 6. `npm run verify:trakt` — check what landed, and list anything that didn't.
 7. If `verify` reports missing shows, these often recover them (each explains itself when you run it): `npm run recover:trakt`, `npm run resolve:trakt`, `npm run split:trakt`.
 
+## Where to find your results
+
+Everything the tool creates goes in a **`build`** folder, made **automatically** the first time you run `npm run build` — you never create it yourself, and you don't need to recreate it (re-running `npm run build` just refreshes it). It's safe to delete; the tool rebuilds it.
+
+After a run, the two files worth opening are:
+
+- **`build/trakt-manifest.json`** (or `build/simkl-manifest.json`) — the list of anything that couldn't be imported, and why. This is where the "missing from Trakt's catalog" titles are recorded.
+- **`build/trakt-verify-report.json`** — the full coverage / date-accuracy summary that `verify` prints.
+
 ## Copying your lists to Trakt
+
+> Run `npm run build` once first so the `build` folder exists, then put your list plan inside it (below).
+
 
 Trakt's free plan allows 5 custom lists. To choose which TV Time lists to bring over, copy the example and edit it:
 
