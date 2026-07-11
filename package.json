@@ -10,9 +10,13 @@
   "scripts": {
     "build": "node core/build.mjs",
     "test": "node --test \"tests/**/*.test.mjs\"",
-    "dry-run": "node simkl/import.mjs --dry-run",
-    "import": "node simkl/import.mjs --commit",
-    "verify": "node simkl/verify.mjs",
+    "auth": "node --env-file=.env simkl/auth.mjs",
+    "dry-run": "node simkl/dry-run.mjs",
+    "probe": "node --env-file=.env simkl/probe.mjs",
+    "import": "node --env-file=.env simkl/import.mjs",
+    "verify": "node --env-file=.env simkl/verify.mjs",
+    "franchise": "node --env-file=.env simkl/franchise.mjs",
+    "recover": "node --env-file=.env simkl/recover.mjs",
     "verify:core": "node core/verify.mjs",
     "format": "biome format --write .",
     "check": "biome check ."
