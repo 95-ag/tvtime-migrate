@@ -5,7 +5,6 @@
 data/
 
 # Generated artifacts
-logs/
 tmp/
 build/
 
