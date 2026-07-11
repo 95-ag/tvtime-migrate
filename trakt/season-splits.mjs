@@ -1,5 +1,5 @@
 // trakt/season-splits.mjs — season-split recovery: a show's LATER season is a SEPARATE Trakt show
-// (e.g. our "Tale of the Nine Tailed" tvdb 386917 Season 2 = Trakt "Tale of the Nine Tailed 1938").
+// (e.g. a source show's Season 2 is catalogued on Trakt as its own distinct show/id).
 // Reads build/trakt-season-splits.json = [{ourTvdb, ourSeason, traktId, note?}]. For each entry,
 // imports our episodes matching (showTvdb===ourTvdb, season===ourSeason) under the target Trakt show
 // at Season 1 (our episode numbers kept), plus their rewatch plays, plus adds the show to any master
@@ -136,8 +136,9 @@ if (import.meta.url === `file://${process.argv[1]}`) {
           );
 
         // Only add to lists that ALREADY exist on the account — never create a new one (the free-tier
-        // 5-list cap is full, and the master "K-drama" list was split into "K-drama Old/New" at import,
-        // so a create attempt just 420s). Shows whose master list has no live equivalent are skipped.
+        // 5-list cap may already be full, e.g. if a source list was split into two at import per the
+        // list plan, so a create attempt just 420s). Shows whose master list has no live equivalent
+        // are skipped.
         const existing = new Map((await client.getUserLists())?.map((l) => [l.name, l.ids.slug]) ?? []);
         const memberLists = listsForSplit(split, master.lists ?? []);
         for (const l of memberLists) {

@@ -56,7 +56,7 @@ await send('ptw-movies', () => client.postWatchlist({ movies: payload.watchlist.
 // 5. Favorites
 await send('favorites', () => client.postFavorites(payload.favorites));
 // 6. Custom lists (content + dropped)
-const allLists = [...payload.contentLists, payload.droppedList];
+const allLists = [...payload.contentLists, ...(payload.droppedList.name ? [payload.droppedList] : [])];
 for (const list of allLists) {
   await send(`list:${list.name}`, async () => {
     const slug = await findOrCreateList(client, list.name);

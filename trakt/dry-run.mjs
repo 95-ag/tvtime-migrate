@@ -1,8 +1,14 @@
 // trakt/dry-run.mjs — assemble + validate all Trakt payloads, print summary. No network.
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { buildFavoritesPayload } from './favorites.mjs';
 import { buildContentLists, buildDroppedShows } from './lists.mjs';
 import { buildHistoryPayload, buildRewatchPayload, buildWatchlistPayload } from './payload.mjs';
+
+const LIST_PLAN_PATH = 'build/trakt-list-plan.json';
+
+function loadListPlan(path = LIST_PLAN_PATH) {
+  return existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : {};
+}
 
 export function assemble(masterPath = 'build/master.json') {
   const master = JSON.parse(readFileSync(masterPath, 'utf8'));
@@ -10,9 +16,12 @@ export function assemble(masterPath = 'build/master.json') {
   const rewatch = buildRewatchPayload(master.rewatch ?? [], master.episodes ?? []);
   const watchlist = buildWatchlistPayload(master);
   const favorites = buildFavoritesPayload(master);
-  const { lists, skipped, unresolvedMovies } = buildContentLists(master);
+  const plan = loadListPlan();
+  const { lists, skipped, unresolvedMovies } = buildContentLists(master, plan);
   const droppedShows = (master.shows ?? []).filter((s) => s.simklBucket === 'dropped');
-  const dropped = buildDroppedShows(droppedShows);
+  const droppedList = plan.dropped?.name
+    ? { name: plan.dropped.name, ...buildDroppedShows(droppedShows) }
+    : { name: null, shows: [] };
   const skippedMovies = [...(history.skippedMovies ?? []), ...(watchlist.skippedMovies ?? [])];
   return {
     history,
@@ -20,7 +29,7 @@ export function assemble(masterPath = 'build/master.json') {
     watchlist,
     favorites,
     contentLists: lists,
-    droppedList: { name: 'Dropped', ...dropped },
+    droppedList,
     skippedLists: skipped,
     unresolvedListMovies: unresolvedMovies,
     rewatchDropped: master.rewatchDropped ?? [],

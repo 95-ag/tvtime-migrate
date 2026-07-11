@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { findOrCreateList, buildDroppedShows, buildContentLists, splitKdrama } from '../../trakt/lists.mjs';
+import { findOrCreateList, buildDroppedShows, buildContentLists, splitByWatchOrder } from '../../trakt/lists.mjs';
 
 describe('findOrCreateList', () => {
   it('returns existing slug', async () => {
@@ -39,7 +39,7 @@ describe('buildDroppedShows', () => {
   });
 });
 
-describe('splitKdrama', () => {
+describe('splitByWatchOrder', () => {
   const kdList = {
     name: 'K-drama',
     shows: [
@@ -57,23 +57,24 @@ describe('splitKdrama', () => {
     { showTvdb: 3, watchedAt: '2022-01-01T00:00:00Z' },
     { showTvdb: 4, watchedAt: '2023-01-01T00:00:00Z' },
   ];
+  const opts = { cap: 2, oldName: 'A', newName: 'B' };
 
   it('Old gets the earliest-watched up to the cap', () => {
-    const { old } = splitKdrama(kdList, episodes, 2);
+    const { old } = splitByWatchOrder(kdList, episodes, opts);
     assert.deepEqual(
       old.shows.map((s) => s.ids.tvdb),
       [1, 2],
     );
-    assert.equal(old.name, 'K-drama Old');
+    assert.equal(old.name, 'A');
   });
   it('New gets the overflow + undated + movies', () => {
-    const { neu } = splitKdrama(kdList, episodes, 2);
+    const { neu } = splitByWatchOrder(kdList, episodes, opts);
     assert.deepEqual(
       neu.shows.map((s) => s.ids.tvdb).sort((a, b) => a - b),
       [3, 4, 5],
     );
     assert.equal(neu.movies.length, 1);
-    assert.equal(neu.name, 'K-drama New');
+    assert.equal(neu.name, 'B');
   });
 });
 
@@ -82,17 +83,34 @@ describe('buildContentLists', () => {
     lists: [
       { name: 'C-Drama', shows: [{ tvdb: 10, name: 'c1' }], movies: [] },
       { name: 'Anime', shows: [{ tvdb: 20, name: 'a1' }], movies: [] },
+      { name: 'K-drama', shows: [{ tvdb: 30, name: 'k1' }], movies: [] },
     ],
     episodes: [],
   };
-  it('keeps only configured lists', () => {
-    const { lists, skipped } = buildContentLists(master);
+  const plan = {
+    keep: ['C-Drama'],
+    split: { source: 'K-drama', cap: 250, oldName: 'K-drama Old', newName: 'K-drama New' },
+  };
+
+  it('keeps only configured lists, skips the rest', () => {
+    const { lists, skipped } = buildContentLists(master, plan);
     assert.ok(lists.find((l) => l.name === 'C-Drama'));
     assert.ok(!lists.find((l) => l.name === 'Anime'));
     assert.ok(skipped.find((s) => s.name === 'Anime'));
   });
   it('C-Drama items become {ids:{tvdb}}', () => {
-    const { lists } = buildContentLists(master);
+    const { lists } = buildContentLists(master, plan);
     assert.deepEqual(lists.find((l) => l.name === 'C-Drama').shows, [{ ids: { tvdb: 10 } }]);
+  });
+  it('splits the configured source list per the plan', () => {
+    const { lists } = buildContentLists(master, plan);
+    assert.ok(lists.find((l) => l.name === 'K-drama Old'));
+    assert.ok(lists.find((l) => l.name === 'K-drama New'));
+    assert.ok(!lists.find((l) => l.name === 'K-drama'));
+  });
+  it('empty plan skips everything without crashing', () => {
+    const { lists, skipped } = buildContentLists(master, {});
+    assert.equal(lists.length, 0);
+    assert.equal(skipped.length, 3);
   });
 });

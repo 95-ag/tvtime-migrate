@@ -1,8 +1,6 @@
-// trakt/lists.mjs — build the 5 chosen custom lists from master.lists (+ master.episodes for the split).
+// trakt/lists.mjs — build custom lists from master.lists (+ master.episodes for a watch-order split),
+// driven by an account-specific "list plan" (see trakt/dry-run.mjs) so this module stays data-independent.
 import { toTvdbId } from './payload.mjs';
-
-const KEEP_PLAIN = new Set(['C-Drama', 'C-drama minis']);
-const KDRAMA_OLD_CAP = 250;
 
 export async function findOrCreateList(client, name) {
   const lists = await client.getUserLists();
@@ -27,11 +25,13 @@ function lastWatchByShow(episodes) {
   return m;
 }
 
-export function splitKdrama(kdList, episodes, cap = KDRAMA_OLD_CAP) {
+// Splits `list` by each show's watch order (date = latest watched episode): the earliest `cap` watched
+// shows go to `oldName`, the rest (plus undated shows and all movies) go to `newName`.
+export function splitByWatchOrder(list, episodes, { cap, oldName, newName }) {
   const lastWatch = lastWatchByShow(episodes);
   const dated = [];
   const undated = [];
-  for (const s of kdList.shows) {
+  for (const s of list.shows) {
     const d = lastWatch.get(String(s.tvdb));
     if (d) dated.push({ ...s, date: d });
     else undated.push(s);
@@ -39,30 +39,29 @@ export function splitKdrama(kdList, episodes, cap = KDRAMA_OLD_CAP) {
   dated.sort((a, b) => a.date.localeCompare(b.date)); // ascending: earliest watched first
   const oldShows = dated.slice(0, cap);
   const newShows = dated.slice(cap);
-  const toIds = (arr) => arr.map((s) => ({ ids: { tvdb: toTvdbId(s.tvdb, `K-drama show tvdb=${s.tvdb}`) } }));
-  const movies = (kdList.movies ?? []).filter((m) => m.imdb).map((m) => ({ ids: { imdb: m.imdb } }));
+  const toIds = (arr) => arr.map((s) => ({ ids: { tvdb: toTvdbId(s.tvdb, `${list.name} show tvdb=${s.tvdb}`) } }));
+  const movies = (list.movies ?? []).filter((m) => m.imdb).map((m) => ({ ids: { imdb: m.imdb } }));
   return {
-    old: { name: 'K-drama Old', shows: toIds(oldShows), movies: [] },
-    neu: { name: 'K-drama New', shows: [...toIds(newShows), ...toIds(undated)], movies },
-    unresolvedMovies: (kdList.movies ?? []).filter((m) => !m.imdb).map((m) => ({ list: 'K-drama', ...m })),
+    old: { name: oldName, shows: toIds(oldShows), movies: [] },
+    neu: { name: newName, shows: [...toIds(newShows), ...toIds(undated)], movies },
+    unresolvedMovies: (list.movies ?? []).filter((m) => !m.imdb).map((m) => ({ list: list.name, ...m })),
   };
 }
 
-export function buildContentLists(master) {
+// Builds the account's chosen custom lists per `plan` ({keep:[names], split:{source,cap,oldName,newName}}).
+// Every master list not named in `plan.keep`/`plan.split.source` is reported as skipped.
+export function buildContentLists(master, plan = {}) {
+  const keep = new Set(plan.keep ?? []);
   const lists = [];
   const skipped = [];
   const unresolvedMovies = [];
-  const kdList = master.lists.find((l) => l.name === 'K-drama');
-
-  if (kdList) {
-    const { old, neu, unresolvedMovies: um } = splitKdrama(kdList, master.episodes, KDRAMA_OLD_CAP);
-    lists.push(old, neu);
-    unresolvedMovies.push(...um);
-  }
 
   for (const l of master.lists) {
-    if (l.name === 'K-drama') continue;
-    if (KEEP_PLAIN.has(l.name)) {
+    if (plan.split && l.name === plan.split.source) {
+      const { old, neu, unresolvedMovies: um } = splitByWatchOrder(l, master.episodes, plan.split);
+      lists.push(old, neu);
+      unresolvedMovies.push(...um);
+    } else if (keep.has(l.name)) {
       lists.push({
         name: l.name,
         shows: l.shows.map((s) => ({ ids: { tvdb: toTvdbId(s.tvdb, `${l.name} show tvdb=${s.tvdb}`) } })),
