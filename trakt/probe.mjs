@@ -7,7 +7,16 @@ import { makeClient } from './client.mjs';
 import { toTvdbId } from './payload.mjs';
 
 const master = JSON.parse(readFileSync('build/master.json', 'utf8'));
-const ep = master.episodes.slice().sort((a, b) => a.season - b.season || a.episode - b.episode)[0];
+// Probe a representative REGULAR episode (season>=1, dated) — season-0/episode-0 specials
+// may not exist on Trakt (they land in not_found at import, which the manifest captures).
+const ep = master.episodes
+  .filter((e) => e.season >= 1 && e.episode >= 1 && e.watchedAt)
+  .sort(
+    (a, b) =>
+      String(a.showTvdb).localeCompare(String(b.showTvdb), undefined, { numeric: true }) ||
+      a.season - b.season ||
+      a.episode - b.episode,
+  )[0];
 
 const client = makeClient({ clientId: requireEnv('TRAKT_CLIENT_ID'), token: loadToken() });
 console.log(`\n[probe] Sending tvdb=${ep.showTvdb} "${ep.showTitle}" S${ep.season}E${ep.episode} @ ${ep.watchedAt}`);
@@ -27,23 +36,30 @@ const res = await client.postHistory({
 });
 console.log('  POST added:', JSON.stringify(res?.added ?? {}), 'not_found:', JSON.stringify(res?.not_found ?? {}));
 
-const watched = await client.getWatchedShows();
-const show = (watched ?? []).find((s) => String(s.show?.ids?.tvdb) === String(ep.showTvdb));
-const found = show?.seasons?.find((se) => se.number === ep.season)?.episodes?.find((e) => e.number === ep.episode);
-console.log('  read-back:', JSON.stringify(found ?? null));
+// Read back from /sync/history/episodes (the only per-episode source; watched/shows has no episodes).
+// Trakt truncates watched_at to the minute, so compare at minute precision.
+const toMinute = (iso) => (iso ? new Date(iso).toISOString().slice(0, 16) : null);
+const history = await client.getHistory('episodes');
+const play = (history ?? []).find(
+  (h) =>
+    String(h.show?.ids?.tvdb) === String(ep.showTvdb) &&
+    h.episode?.season === ep.season &&
+    h.episode?.number === ep.episode,
+);
+console.log('  read-back:', play ? JSON.stringify({ watched_at: play.watched_at, tvdb: play.show?.ids?.tvdb }) : null);
 
 let pass = true;
-if (!found) {
-  console.error('  ✗ episode not found on read-back (check id field path)');
+if (!play) {
+  console.error('  ✗ episode not found in history read-back');
   pass = false;
 } else {
-  const expected = ep.watchedAt ?? null;
-  const got = found.last_watched_at ?? null;
-  if (expected && got !== expected) {
-    console.error(`  ✗ date mismatch: sent ${expected}, got ${got}`);
+  const want = toMinute(ep.watchedAt);
+  const got = toMinute(play.watched_at);
+  if (want && got !== want) {
+    console.error(`  ✗ date mismatch (minute): sent ${want}, got ${got}`);
     pass = false;
   } else {
-    console.log(`  ✓ found at S${ep.season}E${ep.episode}; date ok (${got}); plays=${found.plays}`);
+    console.log(`  ✓ found in history at S${ep.season}E${ep.episode}; date ok at minute precision (${got})`);
   }
 }
 
