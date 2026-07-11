@@ -43,16 +43,32 @@ export function buildHistoryPayload(master) {
     });
   }
 
-  const movies = master.movies
-    .filter((mv) => mv.watched)
-    .map((mv) => ({
-      ids: { imdb: requireImdb(mv.imdb, `movie "${mv.title ?? mv.tvdb}"`) },
-      ...(mv.title ? { title: mv.title } : {}),
-      ...(mv.year ? { year: Number(mv.year) } : {}),
-      ...(mv.watchedAt ? { watched_at: mv.watchedAt } : {}),
-    }));
+  const movies = [];
+  const skippedMovies = [];
+  for (const mv of master.movies) {
+    if (!mv.watched) continue;
+    const dated = mv.watchedAt ? { watched_at: mv.watchedAt } : {};
+    if (mv.imdb) {
+      movies.push({
+        ids: { imdb: mv.imdb },
+        ...(mv.title ? { title: mv.title } : {}),
+        ...(mv.year ? { year: Number(mv.year) } : {}),
+        ...dated,
+      });
+    } else if (mv.title && mv.year) {
+      // Trakt matches a movie by title+year when no id is available (imdb missing)
+      movies.push({ title: mv.title, year: Number(mv.year), ...dated });
+    } else {
+      skippedMovies.push({
+        kind: 'movie',
+        tvdb: mv.tvdb ?? null,
+        title: mv.title ?? null,
+        reason: 'no_imdb_or_title_year',
+      });
+    }
+  }
 
-  return { shows, movies };
+  return { shows, movies, skippedMovies };
 }
 
 export function buildRewatchPayload(rewatchRows) {
@@ -77,10 +93,25 @@ export function buildWatchlistPayload(master) {
       ids: { tvdb: toTvdbId(s.tvdb, `ptw show "${s.title ?? s.tvdb}"`) },
       ...(s.title ? { title: s.title } : {}),
     }));
-  const movies = (master.planToWatch?.movies ?? []).map((mv) => ({
-    ids: { imdb: requireImdb(mv.imdb, `ptw movie "${mv.title ?? mv.tvdb}"`) },
-    ...(mv.title ? { title: mv.title } : {}),
-    ...(mv.year ? { year: Number(mv.year) } : {}),
-  }));
-  return { shows, movies };
+  const movies = [];
+  const skippedMovies = [];
+  for (const mv of master.planToWatch?.movies ?? []) {
+    if (mv.imdb) {
+      movies.push({
+        ids: { imdb: mv.imdb },
+        ...(mv.title ? { title: mv.title } : {}),
+        ...(mv.year ? { year: Number(mv.year) } : {}),
+      });
+    } else if (mv.title && mv.year) {
+      movies.push({ title: mv.title, year: Number(mv.year) });
+    } else {
+      skippedMovies.push({
+        kind: 'ptw-movie',
+        tvdb: mv.tvdb ?? null,
+        title: mv.title ?? null,
+        reason: 'no_imdb_or_title_year',
+      });
+    }
+  }
+  return { shows, movies, skippedMovies };
 }

@@ -68,11 +68,24 @@ describe('buildHistoryPayload — movies', () => {
   it('skips unwatched', () => {
     assert.equal(buildHistoryPayload(master).movies.length, 1);
   });
-  it('throws when watched movie has null imdb', () => {
-    assert.throws(
-      () => buildHistoryPayload({ ...master, movies: [{ tvdb: 5, imdb: null, title: 'X', watched: true }] }),
-      /imdb/i,
-    );
+  it('falls back to title+year when watched movie has null imdb', () => {
+    const { movies } = buildHistoryPayload({
+      ...master,
+      movies: [{ tvdb: 5, imdb: null, title: 'X', year: 2021, watched: true, watchedAt: '2023-03-01T00:00:00.000Z' }],
+    });
+    assert.equal(movies.length, 1);
+    assert.deepEqual(movies[0], { title: 'X', year: 2021, watched_at: '2023-03-01T00:00:00.000Z' });
+    assert(!('ids' in movies[0]));
+  });
+  it('skips (and manifests) a watched movie with no imdb and no title/year', () => {
+    const { movies, skippedMovies } = buildHistoryPayload({
+      ...master,
+      movies: [{ tvdb: 5, imdb: null, title: null, year: null, watched: true }],
+    });
+    assert.equal(movies.length, 0);
+    assert.equal(skippedMovies.length, 1);
+    assert.equal(skippedMovies[0].reason, 'no_imdb_or_title_year');
+    assert.equal(skippedMovies[0].tvdb, 5);
   });
 });
 
@@ -97,11 +110,22 @@ describe('buildWatchlistPayload', () => {
   it('PTW movies use imdb', () => {
     assert.ok(buildWatchlistPayload(master).movies.find((m) => m.ids.imdb === 'tt9999999'));
   });
-  it('throws on PTW movie with null imdb', () => {
-    assert.throws(
-      () =>
-        buildWatchlistPayload({ ...master, planToWatch: { shows: [], movies: [{ tvdb: 8, imdb: null, title: 'X' }] } }),
-      /imdb/i,
-    );
+  it('falls back to title+year when PTW movie has null imdb', () => {
+    const { movies } = buildWatchlistPayload({
+      ...master,
+      planToWatch: { shows: [], movies: [{ tvdb: 8, imdb: null, title: 'X', year: 2021 }] },
+    });
+    assert.equal(movies.length, 1);
+    assert.deepEqual(movies[0], { title: 'X', year: 2021 });
+  });
+  it('skips (and manifests) a PTW movie with no imdb and no title/year', () => {
+    const { movies, skippedMovies } = buildWatchlistPayload({
+      ...master,
+      planToWatch: { shows: [], movies: [{ tvdb: 8, imdb: null, title: null, year: null }] },
+    });
+    assert.equal(movies.length, 0);
+    assert.equal(skippedMovies.length, 1);
+    assert.equal(skippedMovies[0].reason, 'no_imdb_or_title_year');
+    assert.equal(skippedMovies[0].kind, 'ptw-movie');
   });
 });

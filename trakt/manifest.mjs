@@ -5,6 +5,7 @@ export function buildManifest({
   unbridgedRewatch = [],
   skippedLists = [],
   unresolvedListMovies = [],
+  skippedMovies = [],
 }) {
   const items = [
     ...(notFound.movies ?? []).map((m) => ({ ...m, reason: 'not_found_movies' })),
@@ -14,6 +15,7 @@ export function buildManifest({
     ...unbridgedRewatch.map((r) => ({ ...r, reason: 'unbridged_rewatch' })),
     ...skippedLists.map((l) => ({ ...l, reason: 'skipped_list_free_tier' })),
     ...unresolvedListMovies.map((m) => ({ ...m, reason: 'list_movie_no_imdb' })),
+    ...skippedMovies.map((m) => ({ ...m, reason: m.reason ?? 'movie_no_identifier' })),
   ];
   return { count: items.length, items };
 }

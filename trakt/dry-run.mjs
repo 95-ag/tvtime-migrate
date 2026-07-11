@@ -13,6 +13,7 @@ export function assemble(masterPath = 'build/master.json') {
   const { lists, skipped, unresolvedMovies } = buildContentLists(master);
   const droppedShows = (master.shows ?? []).filter((s) => s.simklBucket === 'dropped');
   const dropped = buildDroppedShows(droppedShows);
+  const skippedMovies = [...(history.skippedMovies ?? []), ...(watchlist.skippedMovies ?? [])];
   return {
     history,
     rewatch,
@@ -23,6 +24,7 @@ export function assemble(masterPath = 'build/master.json') {
     skippedLists: skipped,
     unresolvedListMovies: unresolvedMovies,
     rewatchDropped: master.rewatchDropped ?? [],
+    skippedMovies,
   };
 }
 
@@ -42,6 +44,7 @@ export function summarize(p) {
     skippedLists: p.skippedLists,
     unresolvedListMovies: p.unresolvedListMovies.length,
     unbridgedRewatch: p.rewatchDropped.length,
+    skippedMovies: p.skippedMovies.length,
   };
 }
 
