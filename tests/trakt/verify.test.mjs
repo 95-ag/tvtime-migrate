@@ -110,4 +110,30 @@ describe('reconcile', () => {
   it('fails when a favorite show is missing from the favorites readback', () => {
     assert.equal(reconcile(master, { ...readback, favoriteShows: [] }).pass, false);
   });
+  it('remaps an episode via the tvdb episode-id map when Trakt numbers it differently', () => {
+    const remapMaster = {
+      ...master,
+      episodes: [
+        ...master.episodes,
+        { showTvdb: 101, season: 5, episode: 3, epTvdb: '900', watchedAt: '2023-04-01T00:00:00.000Z' },
+      ],
+    };
+    const remapReadback = {
+      ...readback,
+      historyEpisodes: [
+        ...readback.historyEpisodes,
+        { watched_at: '2023-04-01T00:00:00.000Z', episode: { season: 1, number: 120 }, show: { ids: { tvdb: 101 } } },
+      ],
+    };
+
+    const withoutMap = reconcile(remapMaster, remapReadback);
+    assert.equal(withoutMap.matchedEpisodes, 3);
+    assert.ok(withoutMap.missingFromReadback.some((m) => m.season === 5 && m.episode === 3));
+
+    const episodeMap = new Map([['900', { season: 1, number: 120 }]]);
+    const withMap = reconcile(remapMaster, remapReadback, episodeMap);
+    assert.equal(withMap.matchedEpisodes, 4);
+    assert.equal(withMap.dateFidelity, 1);
+    assert.ok(!withMap.missingFromReadback.some((m) => m.season === 5 && m.episode === 3));
+  });
 });

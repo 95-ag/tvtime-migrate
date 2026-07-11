@@ -1,5 +1,5 @@
 // trakt/verify.mjs — identity-based Trakt read-back reconciliation.
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { requireEnv } from './config.mjs';
 import { loadToken } from './auth.mjs';
 import { makeClient } from './client.mjs';
@@ -8,8 +8,17 @@ import { buildManifest } from './manifest.mjs';
 export function reconcile(
   master,
   { historyEpisodes, watchedMovies, watchlistShows, watchlistMovies, favoriteShows, favoriteMovies },
+  episodeMap = new Map(),
 ) {
   const toMinute = (iso) => (iso ? new Date(iso).toISOString().slice(0, 16) : null);
+
+  // Anime recovery (recover.mjs) maps our epTvdb -> Trakt's own (season, number) when Trakt numbers an
+  // episode differently than TheTVDB (e.g. absolute-numbered anime). History always reports Trakt's real
+  // numbering, so a remapped episode's lookup key must use it too.
+  const keyFor = (ep) => {
+    const mapped = episodeMap.get(String(ep.epTvdb));
+    return mapped ? `${ep.showTvdb}|${mapped.season}|${mapped.number}` : `${ep.showTvdb}|${ep.season}|${ep.episode}`;
+  };
 
   const epIndex = new Map();
   for (const h of historyEpisodes ?? []) {
@@ -23,8 +32,15 @@ export function reconcile(
     epIndex.set(key, rec);
   }
 
+  const episodesByOriginalKey = new Map();
+  for (const ep of master.episodes) episodesByOriginalKey.set(`${ep.showTvdb}|${ep.season}|${ep.episode}`, ep);
+
   const rewatchIndex = new Map();
-  for (const r of master.rewatch ?? []) rewatchIndex.set(`${r.showTvdb}|${r.season}|${r.episode}`, r.plays);
+  for (const r of master.rewatch ?? []) {
+    const src = episodesByOriginalKey.get(`${r.showTvdb}|${r.season}|${r.episode}`);
+    const key = src ? keyFor(src) : `${r.showTvdb}|${r.season}|${r.episode}`;
+    rewatchIndex.set(key, r.plays);
+  }
 
   let matchedEpisodes = 0,
     dateFidelityEpisodes = 0,
@@ -32,7 +48,8 @@ export function reconcile(
     rewatchTotal = 0;
   const missingFromReadback = [];
   for (const ep of master.episodes) {
-    const found = epIndex.get(`${ep.showTvdb}|${ep.season}|${ep.episode}`);
+    const key = keyFor(ep);
+    const found = epIndex.get(key);
     if (!found) {
       missingFromReadback.push({
         kind: 'episode',
@@ -44,7 +61,7 @@ export function reconcile(
       continue;
     }
     matchedEpisodes++;
-    const extra = rewatchIndex.get(`${ep.showTvdb}|${ep.season}|${ep.episode}`) ?? 0;
+    const extra = rewatchIndex.get(key) ?? 0;
     if (extra > 0) {
       rewatchTotal++;
       if (found.plays >= 1 + extra) rewatchMatches++;
@@ -187,15 +204,22 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const watchlistMovies = await client.getWatchlist('movies');
   const favoriteShows = await client.getFavorites('shows');
   const favoriteMovies = await client.getFavorites('movies');
+  const episodeMap = existsSync('build/trakt-episode-map.json')
+    ? new Map(Object.entries(JSON.parse(readFileSync('build/trakt-episode-map.json', 'utf8'))))
+    : new Map();
 
-  const r = reconcile(master, {
-    historyEpisodes,
-    watchedMovies,
-    watchlistShows,
-    watchlistMovies,
-    favoriteShows,
-    favoriteMovies,
-  });
+  const r = reconcile(
+    master,
+    {
+      historyEpisodes,
+      watchedMovies,
+      watchlistShows,
+      watchlistMovies,
+      favoriteShows,
+      favoriteMovies,
+    },
+    episodeMap,
+  );
   const payload = JSON.parse(readFileSync('build/trakt-payload.json', 'utf8'));
   const manifest = buildManifest({
     notFound: {},
