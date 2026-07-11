@@ -12,7 +12,7 @@ TV Time's own official (GDPR) export can't drive the migration on its own: its e
 
 - **`core/` complete** — reconciles the four overlapping exports (hybrid per-category source-of-truth: Refract per-episode spine + Rescue coverage graft + GDPR rewatch/unique fields) into one PII-free master dataset with row-level + id-integrity verification.
 - **`simkl/` complete** — full Simkl importer: PIN auth, `/sync/history` import (episodes + per-episode dates, movies, plan-to-watch, native status buckets), an **identity-based franchise-aware verify** gate, and a **franchise recovery** step that resolves anime Simkl splits per-cour or renumbers absolutely.
-- **`trakt/` — next** (OAuth device, rewatch plays, "Dropped" list).
+- **`trakt/` complete** — full Trakt importer: OAuth device auth, `/sync/history` import (episodes + per-episode dates, movies via imdb, rewatch plays, plan-to-watch, favorites, 5 custom lists), an identity-based verify gate, and recovery for anime renumbering, stale-tvdb shows, and season-splits. Like `simkl/`, the module is **data-independent** — all account-specific config (the list plan, id maps, alt-title/season-split/id overrides) lives in gitignored `build/`, never in source.
 
 **Both targets are API-based** — Simkl `/sync/history` (PIN), Trakt `/sync/history` (OAuth device); the web importers were rejected (Trakt's native TV Time import is broken; CSV/JSON drop rewatch). **Free-tier v1 scope:** watched episodes + dates, movies, plan-to-watch, status buckets; rewatch is Trakt-only (Simkl gates it behind VIP); custom lists/ratings/comments deferred or out of scope.
 
@@ -25,12 +25,16 @@ TheTVDB (the source ids) and Simkl organize anime differently: Simkl **splits** 
 ```
 data/{refract,gdpr,data-extractor,rescue}/   # exports, one folder per source (gitignored)
 core/                                         # merge four exports → master dataset (dedup · normalize · bucket-map)
-build/                                        # master.json · franchise-map.json · reports · manifests (gitignored)
+build/                                        # master.json · payloads · id maps · list-plan · reports · manifests (gitignored)
 simkl/                                        # Simkl importer:
   config·payload·client·manifest·auth        #   tunables · master→payload · HTTP · failure log · PIN auth
   dry-run·probe·import                        #   validate · live gate · paced commit
   franchise·overrides·recover·verify          #   identity map+cache · manual ids · gap recovery · trustworthy gate
-trakt/                                        # Trakt API importer (next)
+trakt/                                        # Trakt importer:
+  config·payload·favorites·lists·client·auth #   tunables · master→payload · favorites · list-plan builder · HTTP · OAuth device
+  dry-run·manifest·probe·import·verify        #   validate · failure log · live gate · paced commit · identity gate
+  recover·resolve-shows·season-splits         #   anime renumber · stale-tvdb by title · separate-season shows
+trakt-list-plan.example.json                  # template for build/trakt-list-plan.json (committed)
 logs/  tmp/                                   # run artifacts · scratch (gitignored)
 ```
 
@@ -53,6 +57,36 @@ logs/  tmp/                                   # run artifacts · scratch (gitign
    npm run recover    # route verify's gaps to the correct Simkl sub-anime via the franchise map
    npm run verify     # re-check
    ```
+
+4. Trakt workflow (Trakt has **no** server-side dedup — wipe the account's history via the Trakt UI before importing, then the chunk-label state makes each step resume-safe):
+
+   ```
+   npm run build         # reconcile exports → build/master.json (shared with Simkl)
+   npm run auth:trakt    # OAuth device flow (approve the code at trakt.tv/activate) → .trakt-token.json (gitignored)
+   npm run dry-run:trakt # assemble + validate all payloads → build/trakt-payload.json, no writes
+   npm run probe:trakt   # GATE: send 1 episode, read back, assert id/date land at minute precision
+   npm run import:trakt  # paced /sync/history + watchlist + favorites + custom lists
+   npm run verify:trakt  # identity read-back gate → coverage / date-fidelity / manifest
+   npm run recover:trakt # re-import anime whose Trakt numbering differs from TheTVDB (epTvdb map)
+   npm run resolve:trakt # re-import shows Trakt lists under a different id, by title+year (--commit to write)
+   npm run split:trakt   # re-import a show's later season that Trakt catalogues as a separate show (--commit)
+   ```
+
+   **Trakt config (all account-specific, all in gitignored `build/`):**
+
+   - `build/trakt-list-plan.json` — **required for custom lists.** Selects which TV Time lists to migrate into Trakt's 5-list free cap and how. Copy `trakt-list-plan.example.json` and edit:
+
+     ```json
+     {
+       "keep": ["C-Drama", "C-drama minis"],
+       "split": { "source": "K-drama", "cap": 250, "oldName": "K-drama Old", "newName": "K-drama New" },
+       "dropped": { "name": "Dropped" }
+     }
+     ```
+
+     `keep` — list names migrated as-is. `split` — one oversized list divided by watch order into two (earliest-watched `cap` shows → `oldName`, the rest → `newName`); omit if unused. `dropped` — name of the list built from `dropped`-status shows; omit to skip. Any master list not named in `keep`/`split` is left out (surfaced in the manifest).
+
+   - Optional recovery overrides (created as needed, all gitignored): `trakt-alt-titles.json` (`{ "<ourTvdb>": <traktId> }` — a show Trakt lists under a wholly different title), `trakt-season-splits.json` (`[{ourTvdb, ourSeason, traktId}]`), `trakt-id-overrides.json` (`{ watchlistShows: {tvdb: traktId}, movies: {imdb: traktId} }` — so verify credits items added under a resolved id). The `*-map.json` files are generated by the recovery scripts and consumed by verify.
 
 ## Data
 

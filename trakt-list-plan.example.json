@@ -1,0 +1,10 @@
+{
+  "keep": ["C-Drama", "C-drama minis"],
+  "split": {
+    "source": "K-drama",
+    "cap": 250,
+    "oldName": "K-drama Old",
+    "newName": "K-drama New"
+  },
+  "dropped": { "name": "Dropped" }
+}
