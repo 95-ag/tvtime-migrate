@@ -9,7 +9,6 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { requireEnv } from './config.mjs';
 import { loadToken } from './auth.mjs';
 import { makeClient, chunkShows } from './client.mjs';
-import { findOrCreateList } from './lists.mjs';
 import { sameDateStamp, sentinelStamp } from './payload.mjs';
 
 const SPLITS_FILE = 'build/trakt-season-splits.json';
@@ -136,6 +135,10 @@ if (import.meta.url === `file://${process.argv[1]}`) {
             client.postHistory({ shows: rwChunks[i] }),
           );
 
+        // Only add to lists that ALREADY exist on the account — never create a new one (the free-tier
+        // 5-list cap is full, and the master "K-drama" list was split into "K-drama Old/New" at import,
+        // so a create attempt just 420s). Shows whose master list has no live equivalent are skipped.
+        const existing = new Map((await client.getUserLists())?.map((l) => [l.name, l.ids.slug]) ?? []);
         const memberLists = listsForSplit(split, master.lists ?? []);
         for (const l of memberLists) {
           const label = `split-list-${split.ourTvdb}-${split.ourSeason}-${l.name}`;
@@ -143,7 +146,13 @@ if (import.meta.url === `file://${process.argv[1]}`) {
             console.log(`skip ${label} (committed)`);
             continue;
           }
-          const slug = await findOrCreateList(client, l.name);
+          const slug = existing.get(l.name);
+          if (!slug) {
+            console.log(`skip ${label} (list "${l.name}" not on account — no create at cap)`);
+            committedChunks.push(label);
+            saveState(state);
+            continue;
+          }
           await client.addToList(slug, { shows: [{ ids: { trakt: split.traktId } }] });
           committedChunks.push(label);
           saveState(state);
