@@ -75,6 +75,7 @@ export function makeClient({ clientId, token, fetch = globalThis.fetch, sleep = 
     postHistory: (payload) => request('POST', '/sync/history', { body: payload }),
     postWatchlist: (payload) => request('POST', '/sync/watchlist', { body: payload }),
     postFavorites: (payload) => request('POST', '/sync/favorites', { body: payload }),
+    getHistory: (type) => getAll(`/sync/history/${type}`, {}),
     getWatchedShows: () => getAll('/sync/watched/shows', { extended: 'full' }),
     getWatchedMovies: () => getAll('/sync/watched/movies', { extended: 'full' }),
     getWatchlist: (type) => getAll(`/sync/watchlist/${type}`, { extended: 'full' }),

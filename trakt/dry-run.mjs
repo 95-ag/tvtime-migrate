@@ -7,7 +7,7 @@ import { buildHistoryPayload, buildRewatchPayload, buildWatchlistPayload } from 
 export function assemble(masterPath = 'build/master.json') {
   const master = JSON.parse(readFileSync(masterPath, 'utf8'));
   const history = buildHistoryPayload(master);
-  const rewatch = buildRewatchPayload(master.rewatch ?? []);
+  const rewatch = buildRewatchPayload(master.rewatch ?? [], master.episodes ?? []);
   const watchlist = buildWatchlistPayload(master);
   const favorites = buildFavoritesPayload(master);
   const { lists, skipped, unresolvedMovies } = buildContentLists(master);

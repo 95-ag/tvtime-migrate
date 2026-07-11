@@ -71,15 +71,32 @@ export function buildHistoryPayload(master) {
   return { shows, movies, skippedMovies };
 }
 
-export function buildRewatchPayload(rewatchRows) {
+// Trakt dedups identical (episode, minute) plays and truncates to the minute. Master has a rewatch
+// COUNT per episode but no rewatch dates, so extra plays reuse the episode's real watch DATE at
+// distinct times (i minutes past midnight of that date). Only the count is real; the intra-day times
+// are synthetic. If an episode has no base date, fall back to a 1970 sentinel date + counter.
+function sameDateStamp(baseIso, i) {
+  const d = new Date(baseIso);
+  const dayStartMs = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+  return new Date(dayStartMs + i * 60000).toISOString(); // i minutes past midnight of the watch date
+}
+function sentinelStamp(i) {
+  return new Date(i * 60000).toISOString(); // 1970-01-01T00:0i — obviously synthetic, distinct
+}
+
+export function buildRewatchPayload(rewatchRows, episodes = []) {
+  const baseByEp = new Map();
+  for (const e of episodes) {
+    if (e.watchedAt) baseByEp.set(`${e.showTvdb}|${e.season}|${e.episode}`, e.watchedAt);
+  }
+  let sentinel = 0;
   const shows = [];
   for (const r of rewatchRows) {
     const tvdb = toTvdbId(r.showTvdb, `rewatch show tvdb=${r.showTvdb}`);
-    for (let i = 0; i < r.plays; i++) {
-      shows.push({
-        ids: { tvdb },
-        seasons: [{ number: r.season, episodes: [{ number: r.episode, watched_at: 'unknown' }] }],
-      });
+    const base = baseByEp.get(`${r.showTvdb}|${r.season}|${r.episode}`);
+    for (let i = 1; i <= r.plays; i++) {
+      const watched_at = base ? sameDateStamp(base, i) : sentinelStamp(sentinel++);
+      shows.push({ ids: { tvdb }, seasons: [{ number: r.season, episodes: [{ number: r.episode, watched_at }] }] });
     }
   }
   return { shows };

@@ -90,14 +90,27 @@ describe('buildHistoryPayload — movies', () => {
 });
 
 describe('buildRewatchPayload', () => {
-  it('emits `plays` entries per row with watched_at unknown', () => {
-    const { shows } = buildRewatchPayload([{ showTvdb: 101, season: 1, episode: 1, plays: 3 }]);
+  it('with a base watch date: emits `plays` entries with distinct times on the SAME calendar date', () => {
+    const { shows } = buildRewatchPayload(
+      [{ showTvdb: 101, season: 1, episode: 1, plays: 3 }],
+      [{ showTvdb: 101, season: 1, episode: 1, watchedAt: '2020-05-05T14:30:00.000Z' }],
+    );
     const eps = shows.flatMap((s) => s.seasons.flatMap((se) => se.episodes));
     assert.equal(eps.length, 3);
-    assert.ok(eps.every((e) => e.watched_at === 'unknown'));
+    const watchedAts = eps.map((e) => e.watched_at);
+    assert.equal(new Set(watchedAts).size, 3);
+    assert.ok(watchedAts.every((w) => w.startsWith('2020-05-05')));
+  });
+  it('without a base watch date: emits distinct synthetic timestamps, never the literal "unknown"', () => {
+    const { shows } = buildRewatchPayload([{ showTvdb: 101, season: 1, episode: 1, plays: 2 }], []);
+    const eps = shows.flatMap((s) => s.seasons.flatMap((se) => se.episodes));
+    assert.equal(eps.length, 2);
+    const watchedAts = eps.map((e) => e.watched_at);
+    assert.equal(new Set(watchedAts).size, 2);
+    assert.ok(watchedAts.every((w) => w !== 'unknown'));
   });
   it('throws on invalid tvdb', () => {
-    assert.throws(() => buildRewatchPayload([{ showTvdb: 0, season: 1, episode: 1, plays: 1 }]), /invalid tvdb/i);
+    assert.throws(() => buildRewatchPayload([{ showTvdb: 0, season: 1, episode: 1, plays: 1 }], []), /invalid tvdb/i);
   });
 });
 
