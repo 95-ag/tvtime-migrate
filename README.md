@@ -34,18 +34,18 @@ This tool uploads through each service's **history API** instead, which keeps **
 
 ## Proven on a real library
 
-Run end-to-end on one real TV Time account (~15,600 episodes) into Trakt, the final verification reported:
+Run end-to-end on one real TV Time account (~15,600 episodes) into **both** services, the final verification reported:
 
-| What | Result |
-|---|---|
-| Episodes imported with their real dates | **15,567 / 15,638 — 99.55%** |
-| Date accuracy | **100%** |
-| Rewatch plays | **1,721 / 1,721** |
-| Movies | **132 / 133** |
-| Plan-to-watch | **48 / 50** |
-| Favorites | **41 / 41** |
+| What | Simkl | Trakt |
+|---|---|---|
+| Episodes imported with their real dates | **15,588 / 15,638 — 99.68%** | **15,567 / 15,638 — 99.55%** |
+| Date accuracy | **100%** | **100%** |
+| Movies | **131 / 136** | **132 / 133** |
+| Plan-to-watch | **46 / 50** | **48 / 50** |
+| Rewatch plays | — *(Simkl VIP only)* | **1,721 / 1,721** |
+| Favorites & lists | — *(not supported)* | **41 favorites + 5 lists** |
 
-The handful not imported were titles missing from Trakt's own catalog — every one is listed in the run's report ([Where to find your results](#where-to-find-your-results)), never dropped silently.
+The handful not imported were titles missing from the target's own catalog — every one is listed in the run's report ([Where to find your results](#where-to-find-your-results)), never dropped silently. (The movie counts differ because Trakt identifies movies by IMDb id, of which 133 of the 136 had one; Simkl matches all 136 by TheTVDB id.)
 
 ## Step 1 — Back up your TV Time data (do this first)
 
