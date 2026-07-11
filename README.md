@@ -23,6 +23,13 @@ This tool uploads through each service's **history API** instead, which keeps **
 - Plan-to-watch, and watch status (watching / finished / dropped)
 - Favorites and custom lists (Trakt)
 
+**Goes further than a plain importer:**
+
+- **Fixes anime numbering.** When Simkl or Trakt number an anime differently from TheTVDB — split into per-season/per-cour entries, absolute numbering, or a sequel filed as a separate show — the tool maps each episode to the target's own numbering and re-imports it, so those episodes aren't silently lost. (This is why Bleach, Detective Conan, and similar shows come across in full.)
+- **Finds shows listed under a different id.** If a show isn't found by its TheTVDB id, the tool searches by title + year and imports it under the id the target actually uses.
+- **Checks its own work.** After importing, it reads your library back and confirms every episode landed with the correct date, then writes a report of anything it couldn't place — nothing disappears quietly.
+- **Safe to preview and re-run.** Every step has a `dry-run` that uploads nothing, and re-running never creates duplicates.
+
 **Limitations:**
 
 - **Rewatches import to Trakt only** — Simkl keeps rewatch counts behind its paid VIP plan.
@@ -40,12 +47,12 @@ Run end-to-end on one real TV Time account (~15,600 episodes) into **both** serv
 |---|---|---|
 | Episodes imported with their real dates | **15,588 / 15,638 — 99.68%** | **15,567 / 15,638 — 99.55%** |
 | Date accuracy | **100%** | **100%** |
-| Movies | **131 / 136** | **132 / 133** |
+| Movies | **131 / 136** | **135 / 136** |
 | Plan-to-watch | **46 / 50** | **48 / 50** |
 | Rewatch plays | — *(Simkl VIP only)* | **1,721 / 1,721** |
 | Favorites & lists | — *(not supported)* | **41 favorites + 5 lists** |
 
-The handful not imported were titles missing from the target's own catalog — every one is listed in the run's report ([Where to find your results](#where-to-find-your-results)), never dropped silently. (The movie counts differ because Trakt identifies movies by IMDb id, of which 133 of the 136 had one; Simkl matches all 136 by TheTVDB id.)
+The handful not imported were titles missing from the target's own catalog — every one is listed in the run's report ([Where to find your results](#where-to-find-your-results)), never dropped silently. (Trakt's 135/136: 132 movies matched by their IMDb id, 3 more by title + year; the single gap is an OVA that isn't in Trakt's catalog. Simkl matches by TheTVDB id, so its 131/136 uses a different denominator.)
 
 ## Step 1 — Back up your TV Time data (do this first)
 
