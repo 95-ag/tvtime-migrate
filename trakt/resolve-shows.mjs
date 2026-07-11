@@ -11,6 +11,9 @@ const RESOLUTION_FILE = 'build/trakt-show-resolution.json';
 const SHOW_MAP_FILE = 'build/trakt-show-map.json';
 const STATE_FILE = 'build/trakt-resolve-state.json';
 const REPORT_FILE = 'build/trakt-resolve-report.json';
+// Optional manual overrides for shows Trakt lists under a different TITLE than TV Time's (auto title+year
+// search can't bridge a full title change). Map of our tvdb (string) -> confirmed Trakt show id.
+const ALT_TITLE_FILE = 'build/trakt-alt-titles.json';
 
 export function normalizeTitle(s) {
   return String(s || '')
@@ -73,15 +76,33 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const grouped = missingByShow(report);
 
   const client = makeClient({ clientId: requireEnv('TRAKT_CLIENT_ID'), token: loadToken() });
+  const altTitles = existsSync(ALT_TITLE_FILE) ? JSON.parse(readFileSync(ALT_TITLE_FILE, 'utf8')) : {};
 
   const resolved = [];
   const unresolved = [];
   for (const [tvdb, missing] of grouped.entries()) {
+    const show = showsByTvdb.get(String(tvdb));
+    const ourTitle = show?.title ?? String(tvdb);
+
+    // Manual alt-title override wins (Trakt title differs from ours) — trust the confirmed Trakt id.
+    if (altTitles[String(tvdb)]) {
+      const traktId = altTitles[String(tvdb)];
+      const t = await client.get(`/shows/${traktId}?extended=full`);
+      resolved.push({
+        ourTvdb: Number(tvdb),
+        ourTitle,
+        traktId,
+        traktTitle: t?.title ?? '(override)',
+        traktYear: t?.year ?? null,
+        episodes: missing.length,
+        source: 'alt-title-override',
+      });
+      continue;
+    }
+
     const byTvdb = await client.get(`/search/tvdb/${tvdb}?type=show`);
     if (byTvdb?.[0]?.show?.ids?.trakt) continue; // resolves fine — a partial-gap show, not stale-tvdb
 
-    const show = showsByTvdb.get(String(tvdb));
-    const ourTitle = show?.title ?? String(tvdb);
     const candidates = await client.get(`/search/show?query=${encodeURIComponent(normalizeTitle(ourTitle))}&limit=5`);
     const match = pickMatch(
       ourTitle,
