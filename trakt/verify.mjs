@@ -13,11 +13,13 @@ export function reconcile(
   const toMinute = (iso) => (iso ? new Date(iso).toISOString().slice(0, 16) : null);
 
   // Anime recovery (recover.mjs) maps our epTvdb -> Trakt's own (season, number) when Trakt numbers an
-  // episode differently than TheTVDB (e.g. absolute-numbered anime). History always reports Trakt's real
-  // numbering, so a remapped episode's lookup key must use it too.
-  const keyFor = (ep) => {
+  // episode differently than TheTVDB (e.g. absolute-numbered anime). An episode may be present at EITHER
+  // the mapped position (re-imported by recovery) OR its original position (imported fine the first time
+  // because our numbering already matched Trakt's) — so check both and match on whichever exists.
+  const keysFor = (ep) => {
+    const original = `${ep.showTvdb}|${ep.season}|${ep.episode}`;
     const mapped = episodeMap.get(String(ep.epTvdb));
-    return mapped ? `${ep.showTvdb}|${mapped.season}|${mapped.number}` : `${ep.showTvdb}|${ep.season}|${ep.episode}`;
+    return mapped ? [`${ep.showTvdb}|${mapped.season}|${mapped.number}`, original] : [original];
   };
 
   const epIndex = new Map();
@@ -38,8 +40,8 @@ export function reconcile(
   const rewatchIndex = new Map();
   for (const r of master.rewatch ?? []) {
     const src = episodesByOriginalKey.get(`${r.showTvdb}|${r.season}|${r.episode}`);
-    const key = src ? keyFor(src) : `${r.showTvdb}|${r.season}|${r.episode}`;
-    rewatchIndex.set(key, r.plays);
+    const keys = src ? keysFor(src) : [`${r.showTvdb}|${r.season}|${r.episode}`];
+    for (const k of keys) rewatchIndex.set(k, r.plays);
   }
 
   let matchedEpisodes = 0,
@@ -48,8 +50,9 @@ export function reconcile(
     rewatchTotal = 0;
   const missingFromReadback = [];
   for (const ep of master.episodes) {
-    const key = keyFor(ep);
-    const found = epIndex.get(key);
+    const keys = keysFor(ep);
+    const foundKey = keys.find((k) => epIndex.has(k));
+    const found = foundKey ? epIndex.get(foundKey) : undefined;
     if (!found) {
       missingFromReadback.push({
         kind: 'episode',
@@ -61,7 +64,7 @@ export function reconcile(
       continue;
     }
     matchedEpisodes++;
-    const extra = rewatchIndex.get(key) ?? 0;
+    const extra = rewatchIndex.get(foundKey) ?? 0;
     if (extra > 0) {
       rewatchTotal++;
       if (found.plays >= 1 + extra) rewatchMatches++;

@@ -136,4 +136,28 @@ describe('reconcile', () => {
     assert.equal(withMap.dateFidelity, 1);
     assert.ok(!withMap.missingFromReadback.some((m) => m.season === 5 && m.episode === 3));
   });
+
+  it('matches a mapped episode still present at its ORIGINAL position (imported before recovery)', () => {
+    // epTvdb '900' is in the map (points to S1E120), but this episode was imported fine the first time
+    // at its own numbering (S5E3) — recovery never moved it. Verify must still match it at the original spot.
+    const m = {
+      ...master,
+      episodes: [
+        ...master.episodes,
+        { showTvdb: 101, season: 5, episode: 3, epTvdb: '900', watchedAt: '2023-04-01T00:00:00.000Z' },
+      ],
+    };
+    const rb = {
+      ...readback,
+      historyEpisodes: [
+        ...readback.historyEpisodes,
+        { watched_at: '2023-04-01T00:00:00.000Z', episode: { season: 5, number: 3 }, show: { ids: { tvdb: 101 } } },
+      ],
+    };
+    const episodeMap = new Map([['900', { season: 1, number: 120 }]]);
+    const r = reconcile(m, rb, episodeMap);
+    assert.equal(r.matchedEpisodes, 4);
+    assert.equal(r.dateFidelity, 1);
+    assert.ok(!r.missingFromReadback.some((x) => x.season === 5 && x.episode === 3));
+  });
 });
