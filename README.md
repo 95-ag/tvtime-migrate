@@ -52,7 +52,14 @@ Run end-to-end on one real TV Time account (~15,600 episodes) into **both** serv
 | Rewatch plays | — *(Simkl VIP only)* | **1,721 / 1,721** |
 | Favorites & lists | — *(not supported)* | **41 favorites + 5 lists** |
 
-The handful not imported were titles missing from the target's own catalog — every one is listed in the run's report ([Where to find your results](#where-to-find-your-results)), never dropped silently. (Trakt's 135/136: 132 movies matched by their IMDb id, 3 more by title + year; the single gap is an OVA that isn't in Trakt's catalog. Simkl matches by TheTVDB id, so its 131/136 uses a different denominator.)
+**What's actually in those gaps** — almost everything left behind is something the target's catalogue simply doesn't have, so there was nowhere to put it:
+
+- **Specials and stray episodes** Trakt/Simkl haven't catalogued — e.g. a few *Friends* and *Coroner's Diary* specials, and single episodes of a handful of shows.
+- **A newer web-drama or two** not yet listed on the target.
+- **One anime OVA** (*Wotakoi: Love is Hard for Otaku OVA 3*), plus a couple of plan-to-watch titles the target doesn't carry (like the 1995 anime film *Memories*).
+- **A counting quirk, not a real gap:** TV Time splits some daily dramas into twice as many episodes — *Homemade Love Story* shows up as 100 half-episodes where Trakt has the 50 full ones, so 50 "missing halves" are counted that were never separate episodes.
+
+Every one of these is named in the run's report ([Where to find your results](#where-to-find-your-results)) — nothing is dropped silently. (The two movie figures use different denominators: Trakt matches movies by IMDb id — 132 of the 133 that had one, plus 3 more by title + year, with 1 OVA absent — while Simkl matches all 136 by TheTVDB id.)
 
 ## Step 1 — Back up your TV Time data (do this first)
 
