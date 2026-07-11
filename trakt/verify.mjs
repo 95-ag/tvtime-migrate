@@ -11,6 +11,7 @@ export function reconcile(
   episodeMap = new Map(),
   showIdMap = new Map(),
   seasonSplitMap = new Map(),
+  idOverrides = { watchlistShows: {}, movies: {} },
 ) {
   const toMinute = (iso) => (iso ? new Date(iso).toISOString().slice(0, 16) : null);
 
@@ -116,11 +117,13 @@ export function reconcile(
   // few sent without imdb (unresolved uuid->imdb), which never fail the gate.
   const movieByImdb = new Map();
   const movieByTitleYear = new Map();
+  const movieTraktSet = new Set();
   for (const m of watchedMovies ?? []) {
     const mv = m.movie ?? {};
     const lw = toMinute(m.last_watched_at);
     if (mv.ids?.imdb) movieByImdb.set(mv.ids.imdb, lw);
     if (mv.title && mv.year) movieByTitleYear.set(`${String(mv.title).toLowerCase()}|${mv.year}`, lw);
+    if (mv.ids?.trakt != null) movieTraktSet.add(mv.ids.trakt);
   }
   const watched = master.movies.filter((m) => m.watched);
   const withImdb = watched.filter((m) => m.imdb);
@@ -129,16 +132,24 @@ export function reconcile(
   for (const mv of withImdb) {
     const got = movieByImdb.get(mv.imdb);
     const wantMinute = toMinute(mv.watchedAt);
-    if (got !== undefined && (got === wantMinute || (got && !mv.watchedAt))) movieMatches++;
-    else
-      missingFromReadback.push({
-        kind: 'movie',
-        imdb: mv.imdb,
-        title: mv.title,
-        reason: got === undefined ? 'absent' : 'date_mismatch',
-        expected: wantMinute,
-        got,
-      });
+    if (got !== undefined && (got === wantMinute || (got && !mv.watchedAt))) {
+      movieMatches++;
+      continue;
+    }
+    // Item may have been added under a DIFFERENT trakt id (our imdb was stale on Trakt).
+    const overrideTraktId = idOverrides.movies?.[mv.imdb];
+    if (overrideTraktId != null && movieTraktSet.has(overrideTraktId)) {
+      movieMatches++;
+      continue;
+    }
+    missingFromReadback.push({
+      kind: 'movie',
+      imdb: mv.imdb,
+      title: mv.title,
+      reason: got === undefined ? 'absent' : 'date_mismatch',
+      expected: wantMinute,
+      got,
+    });
   }
   let movieTitleYearMatches = 0;
   const unverifiableMovies = [];
@@ -156,12 +167,15 @@ export function reconcile(
 
   const wlShows = new Set((watchlistShows ?? []).map((e) => String(e.show?.ids?.tvdb ?? '')));
   const wlMovies = new Set((watchlistMovies ?? []).map((e) => e.movie?.ids?.imdb ?? ''));
+  const wlTraktSet = new Set((watchlistShows ?? []).map((e) => e.show?.ids?.trakt).filter((id) => id != null));
   const withEpisodes = new Set(master.episodes.map((e) => String(e.showTvdb)));
   const ptwShows = (master.planToWatch?.shows ?? []).filter((s) => !withEpisodes.has(String(s.tvdb)));
   const ptwMovies = master.planToWatch?.movies ?? [];
   let ptwMatches = 0;
   for (const s of ptwShows) {
-    if (wlShows.has(String(s.tvdb))) ptwMatches++;
+    // Item may have been added under a DIFFERENT trakt id (our tvdb was stale on Trakt).
+    const overrideTraktId = idOverrides.watchlistShows?.[String(s.tvdb)];
+    if (wlShows.has(String(s.tvdb)) || (overrideTraktId != null && wlTraktSet.has(overrideTraktId))) ptwMatches++;
     else missingFromReadback.push({ kind: 'ptw-show', tvdb: s.tvdb, reason: 'absent_from_watchlist' });
   }
   for (const m of ptwMovies) {
@@ -235,6 +249,9 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const seasonSplitMap = existsSync('build/trakt-season-split-map.json')
     ? new Map(Object.entries(JSON.parse(readFileSync('build/trakt-season-split-map.json', 'utf8'))))
     : new Map();
+  const idOverrides = existsSync('build/trakt-id-overrides.json')
+    ? JSON.parse(readFileSync('build/trakt-id-overrides.json', 'utf8'))
+    : { watchlistShows: {}, movies: {} };
 
   const r = reconcile(
     master,
@@ -249,6 +266,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     episodeMap,
     showIdMap,
     seasonSplitMap,
+    idOverrides,
   );
   const payload = JSON.parse(readFileSync('build/trakt-payload.json', 'utf8'));
   const manifest = buildManifest({

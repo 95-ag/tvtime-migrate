@@ -220,4 +220,45 @@ describe('reconcile', () => {
     assert.equal(withMap.dateFidelity, 1);
     assert.ok(!withMap.missingFromReadback.some((x) => x.tvdb === 600 && x.season === 2 && x.episode === 3));
   });
+
+  it('credits a plan-to-watch show added to the watchlist under a resolved (stale-tvdb) trakt id', () => {
+    // Our tvdb 360371 was stale on Trakt; the show was added under trakt id 102311 instead.
+    const m = { ...master, planToWatch: { shows: [{ tvdb: 360371 }], movies: [] } };
+    const rbResolved = {
+      ...readback,
+      watchlistShows: [{ show: { ids: { trakt: 102311, tvdb: null } } }],
+    };
+
+    const withoutOverride = reconcile(m, rbResolved);
+    assert.equal(withoutOverride.ptwMatches, 0);
+    assert.ok(withoutOverride.missingFromReadback.some((x) => x.kind === 'ptw-show' && x.tvdb === 360371));
+
+    const idOverrides = { watchlistShows: { 360371: 102311 }, movies: {} };
+    const withOverride = reconcile(m, rbResolved, new Map(), new Map(), new Map(), idOverrides);
+    assert.equal(withOverride.ptwMatches, 1);
+    assert.ok(!withOverride.missingFromReadback.some((x) => x.kind === 'ptw-show' && x.tvdb === 360371));
+  });
+
+  it('credits a watched movie added to the account under a resolved (stale-imdb) trakt id', () => {
+    // Our imdb 'ttX' was stale on Trakt; the movie was added under trakt id 423004 instead.
+    const m = {
+      ...master,
+      movies: [{ tvdb: null, imdb: 'ttX', title: 'Rascal', watchedAt: null, watched: true }],
+    };
+    const rbResolved = {
+      ...readback,
+      watchedMovies: [
+        { movie: { ids: { trakt: 423004, imdb: 'ttDIFFERENT' } }, last_watched_at: '2023-02-01T00:00:00.000Z' },
+      ],
+    };
+
+    const withoutOverride = reconcile(m, rbResolved);
+    assert.equal(withoutOverride.movieMatches, 0);
+    assert.ok(withoutOverride.missingFromReadback.some((x) => x.kind === 'movie' && x.imdb === 'ttX'));
+
+    const idOverrides = { watchlistShows: {}, movies: { ttX: 423004 } };
+    const withOverride = reconcile(m, rbResolved, new Map(), new Map(), new Map(), idOverrides);
+    assert.equal(withOverride.movieMatches, 1);
+    assert.ok(!withOverride.missingFromReadback.some((x) => x.kind === 'movie' && x.imdb === 'ttX'));
+  });
 });
