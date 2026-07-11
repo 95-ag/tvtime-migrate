@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { requireEnv } from './config.mjs';
 import { loadToken } from './auth.mjs';
 import { makeClient } from './client.mjs';
+import { toTvdbId } from './payload.mjs';
 
 const master = JSON.parse(readFileSync('build/master.json', 'utf8'));
 const ep = master.episodes.slice().sort((a, b) => a.season - b.season || a.episode - b.episode)[0];
@@ -14,7 +15,7 @@ console.log(`\n[probe] Sending tvdb=${ep.showTvdb} "${ep.showTitle}" S${ep.seaso
 const res = await client.postHistory({
   shows: [
     {
-      ids: { tvdb: Number(ep.showTvdb) },
+      ids: { tvdb: toTvdbId(ep.showTvdb, `probe show "${ep.showTitle ?? ep.showTvdb}"`) },
       seasons: [
         {
           number: ep.season,

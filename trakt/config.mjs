@@ -2,7 +2,6 @@
 export const config = {
   baseUrl: 'https://api.trakt.tv',
   apiVersion: '2',
-  appName: 'tvtime-migrate',
   userAgent: 'tvtime-migrate/1.0 (+https://github.com/95-ag/tvtime-migrate)',
   postIntervalMs: 1000,
   maxShowsPerChunk: 50,
