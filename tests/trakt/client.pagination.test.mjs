@@ -70,4 +70,30 @@ describe('makeClient pagination', () => {
     assert.equal(all.length, 3);
     assert.equal(call, 3);
   });
+
+  it('paginates getHistory by type', async () => {
+    const pages = [[{ id: 'x' }], [{ id: 'y' }]];
+    let call = 0;
+    let seenPath;
+    const client = makeClient({
+      clientId: 'c',
+      token: 't',
+      fetch: async (url) => {
+        seenPath = new URL(url).pathname;
+        const body = pages[call++];
+        return {
+          ok: true,
+          status: 200,
+          json: async () => body,
+          headers: { get: (h) => (h === 'x-pagination-page-count' ? '2' : null) },
+        };
+      },
+      sleep: async () => {},
+    });
+
+    const all = await client.getHistory('episodes');
+    assert.equal(all.length, 2);
+    assert.equal(call, 2);
+    assert.equal(seenPath, '/sync/history/episodes');
+  });
 });
