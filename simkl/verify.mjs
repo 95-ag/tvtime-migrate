@@ -6,7 +6,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { loadToken } from './auth.mjs';
 import { makeClient } from './client.mjs';
 import { requireClientId } from './config.mjs';
-import { buildManifest } from './manifest.mjs';
+import { buildManifest, renderManifest } from './manifest.mjs';
 import { lookupOverride } from './overrides.mjs';
 
 const HISTORY_BUCKETS = new Set(['completed', 'watching', 'dropped']);
@@ -190,6 +190,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   });
   writeFileSync('build/simkl-verify-report.json', JSON.stringify(r, null, 2));
   writeFileSync('build/simkl-manifest.json', JSON.stringify(manifest, null, 2));
+  writeFileSync('build/simkl-manifest.md', renderManifest(manifest.items, master, 'Simkl'));
   console.log(
     JSON.stringify(
       {

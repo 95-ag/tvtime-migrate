@@ -3,7 +3,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { requireEnv } from './config.mjs';
 import { loadToken } from './auth.mjs';
 import { makeClient } from './client.mjs';
-import { buildManifest } from './manifest.mjs';
+import { buildManifest, renderManifest } from './manifest.mjs';
 
 export function reconcile(
   master,
@@ -279,6 +279,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   });
   writeFileSync('build/trakt-verify-report.json', JSON.stringify(r, null, 2));
   writeFileSync('build/trakt-manifest.json', JSON.stringify(manifest, null, 2));
+  writeFileSync('build/trakt-manifest.md', renderManifest(manifest.items, master, 'Trakt'));
   console.log(
     JSON.stringify(
       {
