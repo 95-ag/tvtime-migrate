@@ -49,20 +49,6 @@ export async function pollForToken({
   }
 }
 
-export function buildRefreshBody({ clientId, clientSecret, refreshToken }) {
-  return { grant_type: 'refresh_token', refresh_token: refreshToken, client_id: clientId, client_secret: clientSecret };
-}
-
-export async function refreshAccessToken({ clientId, clientSecret, refreshToken, fetch = globalThis.fetch }) {
-  const res = await fetch(`${config.baseUrl}/oauth/token`, {
-    method: 'POST',
-    headers: buildAuthHeaders(clientId, null),
-    body: JSON.stringify(buildRefreshBody({ clientId, clientSecret, refreshToken })),
-  });
-  if (!res.ok) throw new Error(`Trakt token refresh failed: HTTP ${res.status}`);
-  return res.json();
-}
-
 export async function deviceAuth({ log = console.log } = {}) {
   const clientId = requireEnv('TRAKT_CLIENT_ID');
   const clientSecret = requireEnv('TRAKT_CLIENT_SECRET');

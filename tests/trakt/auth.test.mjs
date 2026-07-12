@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { buildRefreshBody, pollForToken, requestDeviceCode } from '../../trakt/auth.mjs';
+import { pollForToken, requestDeviceCode } from '../../trakt/auth.mjs';
 
 describe('requestDeviceCode', () => {
   it('POSTs client_id and returns code', async () => {
@@ -78,13 +78,5 @@ describe('pollForToken', () => {
         }),
       /expired/i,
     );
-  });
-});
-
-describe('buildRefreshBody', () => {
-  it('builds refresh body', () => {
-    const b = buildRefreshBody({ clientId: 'c', clientSecret: 's', refreshToken: 'rt' });
-    assert.equal(b.grant_type, 'refresh_token');
-    assert.equal(b.refresh_token, 'rt');
   });
 });
