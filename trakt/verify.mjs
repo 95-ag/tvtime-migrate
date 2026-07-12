@@ -279,7 +279,15 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   });
   writeFileSync('build/trakt-verify-report.json', JSON.stringify(r, null, 2));
   writeFileSync('build/trakt-manifest.json', JSON.stringify(manifest, null, 2));
-  writeFileSync('build/trakt-manifest.md', renderManifest(manifest.items, master, 'Trakt'));
+  writeFileSync(
+    'build/trakt-manifest.md',
+    renderManifest(manifest.items, master, 'Trakt', {
+      matchedEpisodes: r.matchedEpisodes,
+      totalEpisodes: r.totalEpisodes,
+      episodeCoverage: r.episodeCoverage,
+      dateFidelity: r.dateFidelity,
+    }),
+  );
   console.log(
     JSON.stringify(
       {
