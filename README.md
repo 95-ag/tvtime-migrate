@@ -102,7 +102,7 @@ Each export (especially the GDPR ZIP) contains **many** files — you only need 
 
 ## Step 2 — Install the tool
 
-Works the same on **Windows, macOS, and Linux** — it's a small [Node.js](https://nodejs.org) program with no other dependencies.
+Works the same on **Windows, macOS, and Linux** — it's a small [Node.js](https://nodejs.org) program with **nothing else to install**.
 
 1. **Install Node.js 24 or newer** from **[nodejs.org](https://nodejs.org)** (choose the installer for your system and accept the defaults).
 2. **Download this project:** click the green **Code** button at the top of this page → **Download ZIP**, then unzip it. *(If you use git instead: `git clone` the repo.)*
@@ -110,13 +110,8 @@ Works the same on **Windows, macOS, and Linux** — it's a small [Node.js](https
    - **Windows:** open the folder in File Explorer, click the address bar at the top, type `cmd`, and press Enter.
    - **macOS:** right-click the folder → *New Terminal at Folder*.
    - **Linux:** open your terminal app and `cd` into the folder.
-4. **Install the tool** (one time). Type this and press Enter:
 
-   ```
-   npm install
-   ```
-
-Every step from here is a command you type into that same terminal and run with Enter.
+That's it — there's no `npm install` or other setup. The tool runs on Node by itself; the `npm run …` commands below just launch its built-in scripts. *(The only optional install is for contributors who want to format/lint the code — `npm install` fetches that one dev tool — but you don't need it to use the tool.)*
 
 ## Step 3 — Add your data and your app login
 
@@ -161,12 +156,20 @@ Trakt does **not** ignore duplicates, so **clear your Trakt history first**: go 
 
 ## Where to find your results
 
-Everything the tool creates goes in a **`build`** folder, made **automatically** the first time you run `npm run build` — you never create it yourself, and you don't need to recreate it (re-running `npm run build` just refreshes it). It's safe to delete; the tool rebuilds it.
+The tool creates a **`build`** folder automatically the first time you run `npm run build` — you never make it yourself, and it's safe to delete (it's rebuilt on the next run). Most of what's inside is working data the tool uses between steps; you don't need to open those. After a run, the one file to read is:
 
-After a run, the two files worth opening are:
+- **`build/trakt-manifest.md`** (or **`build/simkl-manifest.md`**) — a plain-English list, **by show name**, of anything that couldn't be transferred and why (there's a matching `.json` version for tools). For example:
 
-- **`build/trakt-manifest.json`** (or `build/simkl-manifest.json`) — the list of anything that couldn't be imported, and why. This is where the "missing from Trakt's catalog" titles are recorded.
-- **`build/trakt-verify-report.json`** — the full coverage / date-accuracy summary that `verify` prints.
+  ```
+  ## Episodes the catalogue doesn't have
+  - Homemade Love Story — 50 episode(s)
+  - Friends — 7 episode(s)
+
+  ## Watchlist items not added
+  - Memories
+  ```
+
+The full coverage / date-accuracy numbers are printed on screen by `verify`, and also saved to `build/trakt-verify-report.json`.
 
 ## Copying your lists to Trakt
 
