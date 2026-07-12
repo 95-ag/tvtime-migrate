@@ -59,7 +59,7 @@ Run end-to-end on one real TV Time account (~15,600 episodes) into **both** serv
 - **The occasional anime OVA or watchlist title** the target doesn't carry.
 - **A counting quirk, not a real gap:** TV Time splits some daily dramas into more episodes than the target lists (each aired half counted separately), so those extra "halves" get counted as missing when they were never separate episodes.
 
-Every one of these is named in the run's report ([Where to find your results](#where-to-find-your-results)) — nothing is dropped silently. (Trakt and Simkl land on slightly different movie counts because each has its own catalogue and matches movies with a different id — Trakt by IMDb, Simkl by TheTVDB.)
+Every one of these is named in the run's report ([Where to find your results](#where-to-find-your-results)) — nothing is dropped silently.
 
 ## Step 1 — Back up your TV Time data (do this first)
 
