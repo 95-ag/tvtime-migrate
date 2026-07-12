@@ -6,7 +6,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { loadToken } from './auth.mjs';
 import { makeClient } from './client.mjs';
 import { requireClientId } from './config.mjs';
-import { buildManifest } from './manifest.mjs';
+import { buildManifest, renderManifest } from './manifest.mjs';
 import { lookupOverride } from './overrides.mjs';
 
 const HISTORY_BUCKETS = new Set(['completed', 'watching', 'dropped']);
@@ -60,13 +60,15 @@ export function reconcile(master, library, franchiseCache = {}, overrideFn = loo
   let matchedEpisodes = 0;
   let dateMatches = 0;
   const missingFromReadback = [];
-  const miss = (ep, detail) =>
+  const miss = (ep, detail, expected, got) =>
     missingFromReadback.push({
       kind: 'episode',
       ids: { tvdb: Number(ep.showTvdb) },
       season: ep.season,
       episode: ep.episode,
       ...(detail ? { reason_detail: detail } : {}),
+      ...(expected !== undefined ? { expected } : {}),
+      ...(got !== undefined ? { got } : {}),
     });
 
   for (const ep of master.episodes) {
@@ -88,7 +90,7 @@ export function reconcile(master, library, franchiseCache = {}, overrideFn = loo
     if (got !== undefined) {
       matchedEpisodes++;
       if (got === ep.watchedAt) dateMatches++;
-      else miss(ep, 'date_mismatch');
+      else miss(ep, 'date_mismatch', ep.watchedAt, got);
     } else miss(ep, hadTarget ? 'absent_on_simkl' : 'unmapped');
   }
 
@@ -190,6 +192,15 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   });
   writeFileSync('build/simkl-verify-report.json', JSON.stringify(r, null, 2));
   writeFileSync('build/simkl-manifest.json', JSON.stringify(manifest, null, 2));
+  writeFileSync(
+    'build/simkl-manifest.md',
+    renderManifest(manifest.items, master, 'Simkl', {
+      matchedEpisodes: r.matchedEpisodes,
+      totalEpisodes: r.totalEpisodes,
+      episodeCoverage: r.episodeCoverage,
+      dateFidelity: r.dateFidelity,
+    }),
+  );
   console.log(
     JSON.stringify(
       {

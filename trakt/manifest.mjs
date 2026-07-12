@@ -1,24 +1,34 @@
-// simkl/manifest.mjs — every not-imported item, accounted for. Pure.
-export function buildManifest({ notFound = { shows: [], movies: [], episodes: [] }, missingFromReadback = [] }) {
-  const items = [];
-  for (const kind of ['show', 'movie', 'episode']) {
-    for (const it of notFound[`${kind}s`] ?? []) items.push({ ...it, kind, reason: 'not_found' });
-  }
-  for (const it of missingFromReadback) items.push({ ...it, reason: 'not_confirmed' });
+// trakt/manifest.mjs — Trakt failure manifest builder.
+export function buildManifest({
+  notFound = {},
+  missingFromReadback = [],
+  unbridgedRewatch = [],
+  skippedLists = [],
+  unresolvedListMovies = [],
+  skippedMovies = [],
+}) {
+  const items = [
+    ...(notFound.movies ?? []).map((m) => ({ ...m, reason: 'not_found_movies' })),
+    ...(notFound.shows ?? []).map((s) => ({ ...s, reason: 'not_found_shows' })),
+    ...(notFound.episodes ?? []).map((e) => ({ ...e, reason: 'not_found_episodes' })),
+    ...missingFromReadback,
+    ...unbridgedRewatch.map((r) => ({ ...r, reason: 'unbridged_rewatch' })),
+    ...skippedLists.map((l) => ({ ...l, reason: 'skipped_list_free_tier' })),
+    ...unresolvedListMovies.map((m) => ({ ...m, reason: 'list_movie_no_imdb' })),
+    ...skippedMovies.map((m) => ({ ...m, reason: m.reason ?? 'movie_no_identifier' })),
+  ];
   return { count: items.length, items };
 }
 
+const EPISODE_REASONS = new Set(['absent', 'not_found_episodes']);
+const MOVIE_REASONS = new Set(['absent', 'not_found_movies', 'date_mismatch']);
+const UNMATCHED_REASONS = new Set(['no_imdb_or_title_year', 'movie_no_identifier', 'list_movie_no_imdb']);
+const WATCHLIST_REASONS = new Set(['absent_from_watchlist']);
+const REWATCH_REASONS = new Set(['rewatch_play_count', 'unbridged_rewatch']);
 const SKIPPED_LIST_REASON = 'skipped_list_free_tier';
 
 function plural(n, word) {
   return `${n} ${word}${n === 1 ? '' : 's'}`;
-}
-
-function tvdbOf(item) {
-  return item.ids?.tvdb ?? item.tvdb;
-}
-function imdbOf(item) {
-  return item.ids?.imdb ?? item.imdb;
 }
 
 function showTitle(showByTvdb, tvdb) {
@@ -27,11 +37,10 @@ function showTitle(showByTvdb, tvdb) {
 
 function movieLabel(movieByImdb, item) {
   if (item.title) return item.year ? `${item.title} (${item.year})` : item.title;
-  const imdb = imdbOf(item);
-  const found = imdb ? movieByImdb.get(imdb) : undefined;
+  const found = item.imdb ? movieByImdb.get(item.imdb) : undefined;
   if (found) return found.year ? `${found.title} (${found.year})` : found.title;
-  if (imdb) return `Movie (imdb ${imdb})`;
-  const fallbackId = tvdbOf(item) ?? item.uuid;
+  if (item.imdb) return `Movie (imdb ${item.imdb})`;
+  const fallbackId = item.tvdb ?? item.uuid;
   if (fallbackId) return `Movie (id ${fallbackId})`;
   return 'An unidentified movie (the tool lost its title while matching)';
 }
@@ -78,20 +87,22 @@ export function renderManifest(items, master, targetName, summary = {}) {
   const showByTvdb = new Map((master.shows ?? []).map((s) => [String(s.tvdb), s.title]));
   const movieByImdb = new Map((master.movies ?? []).map((m) => [m.imdb, m]).filter(([imdb]) => imdb));
 
-  const episodeMisses = realItems.filter(
-    (it) =>
-      it.kind === 'episode' &&
-      (it.reason === 'not_found' || it.reason_detail === 'absent_on_simkl' || it.reason_detail === 'unmapped'),
+  const episodeMisses = realItems.filter((it) => it.kind === 'episode' && EPISODE_REASONS.has(it.reason));
+  const movieMisses = realItems.filter((it) => it.kind === 'movie' && MOVIE_REASONS.has(it.reason));
+  const unmatched = realItems.filter((it) => UNMATCHED_REASONS.has(it.reason));
+  const watchlistMisses = realItems.filter(
+    (it) => WATCHLIST_REASONS.has(it.reason) && (it.kind === 'ptw-show' || it.kind === 'ptw-movie'),
   );
-  const wrongDates = realItems.filter((it) => it.kind === 'episode' && it.reason_detail === 'date_mismatch');
-  const movieMisses = realItems.filter((it) => it.kind === 'movie');
-  const watchlistMisses = realItems.filter((it) => it.kind === 'plantowatch-show' || it.kind === 'plantowatch-movie');
+  const rewatchIssues = realItems.filter((it) => REWATCH_REASONS.has(it.reason));
+  const wrongDates = realItems.filter((it) => it.kind === 'episode' && it.reason === 'date_mismatch');
   const other = realItems.filter(
     (it) =>
       !episodeMisses.includes(it) &&
-      !wrongDates.includes(it) &&
       !movieMisses.includes(it) &&
-      !watchlistMisses.includes(it),
+      !unmatched.includes(it) &&
+      !watchlistMisses.includes(it) &&
+      !rewatchIssues.includes(it) &&
+      !wrongDates.includes(it),
   );
 
   if (episodeMisses.length) {
@@ -101,10 +112,7 @@ export function renderManifest(items, master, targetName, summary = {}) {
       '',
     );
     const counts = new Map();
-    for (const it of episodeMisses) {
-      const tvdb = String(tvdbOf(it));
-      counts.set(tvdb, (counts.get(tvdb) ?? 0) + 1);
-    }
+    for (const it of episodeMisses) counts.set(String(it.tvdb), (counts.get(String(it.tvdb)) ?? 0) + 1);
     const rows = [...counts.entries()].sort((a, b) => b[1] - a[1]);
     for (const [tvdb, count] of rows) lines.push(`- ${showTitle(showByTvdb, tvdb)} — ${plural(count, 'episode')}`);
     lines.push(
@@ -124,6 +132,16 @@ export function renderManifest(items, master, targetName, summary = {}) {
     lines.push('');
   }
 
+  if (unmatched.length) {
+    lines.push(
+      "## Titles that couldn't be matched",
+      "*The tool couldn't confidently match these to a catalogue entry — search the service by title to add them by hand if you want them.*",
+      '',
+    );
+    for (const it of unmatched) lines.push(`- ${it.title ?? it.name ?? 'an untitled item'}`);
+    lines.push('');
+  }
+
   if (watchlistMisses.length) {
     lines.push(
       '## Watchlist items not added',
@@ -131,11 +149,24 @@ export function renderManifest(items, master, targetName, summary = {}) {
       '',
     );
     for (const it of watchlistMisses) {
-      if (it.kind === 'plantowatch-show') lines.push(`- ${showTitle(showByTvdb, tvdbOf(it))}`);
+      if (it.kind === 'ptw-show') lines.push(`- ${showTitle(showByTvdb, it.tvdb)}`);
       else {
-        const found = movieByImdb.get(imdbOf(it));
+        const found = it.imdb ? movieByImdb.get(it.imdb) : undefined;
         lines.push(`- ${found ? movieLabel(movieByImdb, found) : 'A watchlist movie (no matching id)'}`);
       }
+    }
+    lines.push('');
+  }
+
+  if (rewatchIssues.length) {
+    lines.push(
+      '## Rewatches not fully recorded',
+      "*The first watch is recorded; some extra rewatch plays couldn't be added.*",
+      '',
+    );
+    for (const it of rewatchIssues) {
+      const name = it.showName ?? showTitle(showByTvdb, it.tvdb);
+      lines.push(`- ${name} S${it.season}E${it.episode}`);
     }
     lines.push('');
   }
@@ -147,7 +178,7 @@ export function renderManifest(items, master, targetName, summary = {}) {
       '',
     );
     for (const it of wrongDates) {
-      const label = `${showTitle(showByTvdb, tvdbOf(it))} S${it.season}E${it.episode}`;
+      const label = `${showTitle(showByTvdb, it.tvdb)} S${it.season}E${it.episode}`;
       const dates = it.expected
         ? it.got
           ? ` — your date ${it.expected}, on the service ${it.got}`
@@ -170,7 +201,7 @@ export function renderManifest(items, master, targetName, summary = {}) {
 
   if (other.length) {
     lines.push('## Other items');
-    for (const it of other) lines.push(`- ${it.title ?? it.name ?? it.reason_detail ?? it.reason}`);
+    for (const it of other) lines.push(`- ${it.title ?? it.name ?? it.reason}`);
     lines.push('');
   }
 

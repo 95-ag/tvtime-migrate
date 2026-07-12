@@ -37,6 +37,16 @@ export function checkRowShapes(master) {
   }
 }
 
+export function checkListsAndFavorites(master) {
+  if (!Array.isArray(master.lists)) throw new Error('master.lists is not an array');
+  for (const l of master.lists) {
+    if (!Array.isArray(l.shows) || !Array.isArray(l.movies))
+      throw new Error(`list "${l.name}" missing shows/movies arrays`);
+  }
+  if (!master.favorites || !Array.isArray(master.favorites.shows) || !Array.isArray(master.favorites.movies))
+    throw new Error('master.favorites missing shows/movies arrays');
+}
+
 export function checkCounts(master) {
   const c = master.counts;
   const between = (n, lo, hi, label) => {
@@ -53,6 +63,7 @@ function main() {
   const master = buildMaster();
   checkRowShapes(master);
   checkPiiFree(master);
+  checkListsAndFavorites(master);
   checkCounts(master);
   console.log('core/verify: PASS', JSON.stringify(master.counts));
 }

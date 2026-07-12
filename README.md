@@ -1,66 +1,197 @@
 # tvtime-migrate
 
-Migrate a **TV Time** watch-history export into **Simkl** and **Trakt** via their APIs — preserving the per-episode watch dates that the CSV importers drop.
+Move your **TV Time** watch history to **[Simkl](https://simkl.com)** or **[Trakt](https://trakt.tv)** — keeping the **real date you watched every episode**, which the usual importers throw away.
 
-## Why
+This is a small command-line tool. It's a bit more effort than a one-click import, but it's the only way to bring your history across in full (see [Why not just use their built-in import?](#why-not-just-use-their-built-in-import)).
 
-TV Time shuts down 2026-07-15. The web/CSV importers keep only one date per title (assumed sequential) and drop rewatch history; each service's `/sync/history` API preserves every episode's real watch date. This tool reconciles the TV Time exports into one master dataset and pushes full history to both targets via API.
+## Why not just use their built-in import?
 
-TV Time's own official (GDPR) export can't drive the migration on its own: its episode timeline is empty and the dates it carries are database insert-times, not watch dates. The real per-episode watch history comes from browser-extension scrapes of the live site, with the official export used only for rewatch counts and the fields it uniquely holds.
+Simkl and Trakt both offer a TV Time / CSV import, but those lose most of your data:
 
-## Status
+- They keep only **one date per show** (assuming you watched it straight through) — every episode's real watch date is lost.
+- They **drop your rewatches** completely.
+- Trakt's official "import from TV Time" historically didn't bring everything across. *(Trakt may have improved it since — this tool predates that and hasn't been re-tested against the current version, so check it yourself if you'd prefer the built-in route.)*
 
-- **`core/` complete** — reconciles the four overlapping exports (hybrid per-category source-of-truth: Refract per-episode spine + Rescue coverage graft + GDPR rewatch/unique fields) into one PII-free master dataset with row-level + id-integrity verification.
-- **`simkl/` complete** — full Simkl importer: PIN auth, `/sync/history` import (episodes + per-episode dates, movies, plan-to-watch, native status buckets), an **identity-based franchise-aware verify** gate, and a **franchise recovery** step that resolves anime Simkl splits per-cour or renumbers absolutely.
-- **`trakt/` — next** (OAuth device, rewatch plays, "Dropped" list).
+This tool uploads through each service's **history API** instead, which keeps **every episode's actual watch date**, plus rewatches, movies, plan-to-watch, favorites, and your custom lists.
 
-**Both targets are API-based** — Simkl `/sync/history` (PIN), Trakt `/sync/history` (OAuth device); the web importers were rejected (Trakt's native TV Time import is broken; CSV/JSON drop rewatch). **Free-tier v1 scope:** watched episodes + dates, movies, plan-to-watch, status buckets; rewatch is Trakt-only (Simkl gates it behind VIP); custom lists/ratings/comments deferred or out of scope.
+## What it can and can't do
 
-### Cross-catalog note (why anime needs extra machinery)
+**Brings across:**
 
-TheTVDB (the source ids) and Simkl organize anime differently: Simkl **splits** a franchise TheTVDB keeps under one id into separate per-cour series, uses **absolute** episode numbering, and files anime films under its anime library. The importer discovers this at run time via a **franchise episode-map** — `(tvdb season, episode) → (Simkl anime, episode)` built from Simkl's `/anime/episodes/{id}` — used by both recovery (send to the right id) and verify (check the right id). A small manual-override table (`simkl/overrides.mjs`) covers the handful of shows whose ids Simkl can't auto-resolve. The master dataset stays deliberately target-neutral (tvdb ids + episodes only).
+- Every watched episode, with its **real watch date**
+- Movies
+- Plan-to-watch, and watch status (watching / finished / dropped)
+- Favorites and custom lists (Trakt)
 
-## Layout
+**Goes further than a plain importer:**
+
+- **Fixes anime numbering.** When Simkl or Trakt number an anime differently from TheTVDB — split into per-season/per-cour entries, absolute numbering, or a sequel filed as a separate show — the tool maps each episode to the target's own numbering and re-imports it, so those episodes aren't silently lost. (This is why Bleach, Detective Conan, and similar shows come across in full.)
+- **Finds shows listed under a different id.** If a show isn't found by its TheTVDB id, the tool searches by title + year and imports it under the id the target actually uses.
+- **Checks its own work.** After importing, it reads your library back and confirms every episode landed with the correct date, then writes a report of anything it couldn't place — nothing disappears quietly.
+- **Safe to preview and re-run.** Every step has a `dry-run` that uploads nothing, and re-running never creates duplicates.
+
+**Limitations:**
+
+- **Rewatches import to Trakt only** — Simkl keeps rewatch counts behind its paid VIP plan.
+- **Custom lists:** Trakt's free plan allows **5 lists**, so you choose which ones to bring over (see [Copying your lists](#copying-your-lists-to-trakt)).
+- **Ratings and comments are not migrated.**
+- Only titles that exist in **Trakt/Simkl's own catalog** can be imported — a few very new or obscure shows may not be there. The tool lists everything it couldn't import, so nothing disappears silently.
+- Trakt stores watch times **to the minute**, so imported dates are accurate to the minute (not the second).
+- There's no single TV Time export with everything, so you gather a few files first (Step 1). This takes some patience.
+
+## Proven on a real library
+
+Run end-to-end on one real TV Time account (~15,600 episodes) into **both** services, the final verification reported:
+
+| From your TV Time profile | Simkl | Trakt |
+|---|---|---|
+| Episodes watched (with the real date) | **15,588 / 15,638 — 99.68%** | **15,567 / 15,638 — 99.55%** |
+| Watch dates kept exactly | **100%** | **100%** |
+| Movies watched | **131 / 136** | **135 / 136** |
+| Watchlist (want to watch) | **46 / 50** | **48 / 50** |
+| Rewatches | — *(Simkl VIP only)* | **1,721 / 1,721** |
+| Favorites & custom lists | — *(not supported)* | **41 favorites + 5 lists** |
+
+**What's actually in those gaps** — almost everything left behind is something the target's catalogue simply doesn't have, so there was nowhere to put it:
+
+- **Specials and stray episodes** the target hasn't catalogued.
+- **Newer shows** not yet listed on the target.
+- **The occasional anime OVA or watchlist title** the target doesn't carry.
+- **A counting quirk, not a real gap:** TV Time splits some daily dramas into more episodes than the target lists (each aired half counted separately), so those extra "halves" get counted as missing when they were never separate episodes.
+
+Every one of these is named in the run's report ([Where to find your results](#where-to-find-your-results)) — nothing is dropped silently.
+
+## Step 1 — Back up your TV Time data (do this first)
+
+**Request your data as early as possible** — TV Time shuts down **2026-07-15**, and exports get slow when the service is busy.
+
+This tool combines **three** exports for the best coverage and the most accurate dates. You'll drop the files into a `data` folder (with `refract`, `rescue`, and `gdpr` sub-folders) after you download the tool in Step 2 — for now, just collect them.
+
+**A. Official export (GDPR)** — gives your rewatch counts
+
+1. Open the export page: **[gdpr.tvtime.com/gdpr/self-service](https://gdpr.tvtime.com/gdpr/self-service)**
+2. Sign in with your TV Time email and password. *(Forgot it? Use the reset-password link on that page.)*
+3. Request your personal data export, and wait for TV Time to prepare it.
+4. Download the ZIP file when it's ready.
+5. Open the ZIP and pull out the file **`rewatched_episode.csv`** — it goes in `data/gdpr/`.
+
+**B. "TV Time Out by Refract" extension** — gives your real watch dates (the most important source)
+
+1. Install **[TV Time Out by Refract](https://chromewebstore.google.com/detail/tv-time-out-by-refract/pmejpdpjbkjklfceogdkolmgclldogbi)** (Chrome or Edge).
+2. Open your TV Time profile and run the extension to export.
+3. The files it makes are named `tvtime-…` (for example `tvtime-series-episodes-2026-07-07.csv`) — they go in `data/refract/`.
+
+**C. "TV Time Rescue"** — fills any gaps the extension misses
+
+1. Go to **[TV Time Rescue](https://vemias.com/tvtime-rescue)** and convert your data.
+2. Save its episode and show files as `episodes.csv` and `shows.csv` — they go in `data/rescue/`.
+
+When you're finished, your `data` folder should look like this:
 
 ```
-data/{refract,gdpr,data-extractor,rescue}/   # exports, one folder per source (gitignored)
-core/                                         # merge four exports → master dataset (dedup · normalize · bucket-map)
-build/                                        # master.json · franchise-map.json · reports · manifests (gitignored)
-simkl/                                        # Simkl importer:
-  config·payload·client·manifest·auth        #   tunables · master→payload · HTTP · failure log · PIN auth
-  dry-run·probe·import                        #   validate · live gate · paced commit
-  franchise·overrides·recover·verify          #   identity map+cache · manual ids · gap recovery · trustworthy gate
-trakt/                                        # Trakt API importer (next)
-logs/  tmp/                                   # run artifacts · scratch (gitignored)
+data/
+  refract/   tvtime-series-episodes-*.csv   tvtime-series-*.csv   tvtime-movies-*.csv
+             tvtime-lists-*.json   tvtime-series-*.json   tvtime-movies-*.json
+  rescue/    episodes.csv   shows.csv
+  gdpr/      rewatched_episode.csv
 ```
 
-## Setup
+Each export (especially the GDPR ZIP) contains **many** files — you only need the specific ones listed above; ignore everything else. You don't need to rename anything either — the `*` is just whatever date is in the filename. Your `data` folder stays on your computer; nothing is uploaded except the history you choose to import.
 
-1. `nvm use` (Node ≥24).
-2. `cp .env.example .env` and fill the client id(s) for the target(s) you're importing to:
-   - Simkl — register an app at https://simkl.com/settings/developer/ (free, instant).
-   - Trakt — register an app at https://trakt.tv/oauth/applications.
-3. Simkl workflow (idempotent — Simkl dedups by item + watch date, so every step is safe to re-run):
+> Also handy as a spare backup (not used by this tool): the **[TV Time Data Extractor](https://chromewebstore.google.com/detail/tv-time-data-extractor/jmpoblamjmpbhnggdihhcoejomkpkgpp)** extension makes a simple CSV of your data.
+
+## Step 2 — Install the tool
+
+Works the same on **Windows, macOS, and Linux** — it's a small [Node.js](https://nodejs.org) program with **nothing else to install**.
+
+1. **Install Node.js 24 or newer** from **[nodejs.org](https://nodejs.org)** (choose the installer for your system and accept the defaults).
+2. **Download this project:** click the green **Code** button at the top of this page → **Download ZIP**, then unzip it. *(If you use git instead: `git clone` the repo.)*
+3. **Open a terminal in the unzipped folder** — this is the window where you type the commands:
+   - **Windows:** open the folder in File Explorer, click the address bar at the top, type `cmd`, and press Enter.
+   - **macOS:** right-click the folder → *New Terminal at Folder*.
+   - **Linux:** open your terminal app and `cd` into the folder.
+
+That's it — there's no `npm install` or other setup. The tool runs on Node by itself; the `npm run …` commands below just launch its built-in scripts. *(The only optional install is for contributors who want to format/lint the code — `npm install` fetches that one dev tool — but you don't need it to use the tool.)*
+
+## Step 3 — Add your data and your app login
+
+1. **Put the files from Step 1 into a `data` folder** inside the project, in the `refract` / `rescue` / `gdpr` layout shown above.
+2. **Register a free API app** on the service you're importing to, and save its login into a file called `.env`. First copy the example:
 
    ```
-   npm run build      # reconcile exports → build/master.json
-   npm run auth       # Simkl PIN auth (enter the code at simkl.com/pin) → .simkl-token.json (gitignored)
-   npm run dry-run    # assemble + validate the payload, no writes
-   npm run probe      # GATE: 1-item live idempotency/date/anime-mapping check before any bulk send
-   npm run import     # paced, chunked /sync/history commit
-   npm run franchise  # build the anime franchise episode-map cache (build/franchise-map.json)
-   npm run verify     # identity-based read-back gate → coverage / date-fidelity / manifest
-   npm run recover    # route verify's gaps to the correct Simkl sub-anime via the franchise map
-   npm run verify     # re-check
+   cp .env.example .env       # macOS / Linux
+   copy .env.example .env     # Windows
    ```
 
-## Data
+   Then open `.env` in any text editor and fill in:
+   - **Simkl** — create an app at **[simkl.com/settings/developer](https://simkl.com/settings/developer/)**, then paste its **Client ID** into `.env`.
+   - **Trakt** — create an app at **[trakt.tv/oauth/applications](https://trakt.tv/oauth/applications)**. For **Redirect URI** enter `urn:ietf:wg:oauth:2.0:oob` and leave the permission checkboxes unticked. Then paste its **Client ID** and **Client Secret** into `.env`.
 
-`data/` holds four overlapping exports, one folder per source (gitignored — personal watch data, read-only):
+## Step 4 — Import
 
-- **refract** — browser-extension scrape of the live TV Time site; the per-episode record of truth (canonical watch dates, tvdb ids, status, movies).
-- **rescue** — processed from the official GDPR export; the coverage gap-filler (broadest episode/show set, fills what refract misses).
-- **gdpr** — TV Time's official data export; the source for rewatch counts and unique fields, but with no usable watch timeline (see [Why](#why)).
-- **data-extractor** — a second site scrape; a redundant clone of refract, dropped from the pipeline.
+Run these in order. The **`dry-run`** step uploads nothing — it just shows what *will* be sent, so you can check first.
 
-The master dataset built from these is PII-free by construction.
+### Import to Simkl
+
+Simkl is safe to re-run at any time — it ignores anything already imported.
+
+1. `npm run build` — combine your exports into one dataset.
+2. `npm run auth` — sign in (it shows a code; enter it at **[simkl.com/pin](https://simkl.com/pin)**).
+3. `npm run dry-run` — preview what will be sent (nothing is uploaded yet).
+4. `npm run import` — upload your history.
+5. `npm run verify` — check what landed, and list anything that didn't.
+6. If `verify` flags missing anime: `npm run franchise`, then `npm run recover`, then `npm run verify` again.
+
+### Import to Trakt
+
+Trakt does **not** ignore duplicates, so **clear your Trakt history first**: go to **[trakt.tv/settings](https://trakt.tv/settings)**, open the data section, and remove your watched history (and your watchlist/lists if you've used them).
+
+1. `npm run build` — combine your exports into one dataset.
+2. `npm run auth:trakt` — sign in (it shows a code; approve it at **[trakt.tv/activate](https://trakt.tv/activate)**).
+3. `npm run dry-run:trakt` — preview (nothing is uploaded yet).
+4. `npm run probe:trakt` — a quick one-episode test that uploading works.
+5. `npm run import:trakt` — upload history, movies, plan-to-watch, favorites, and lists.
+6. `npm run verify:trakt` — check what landed, and list anything that didn't.
+7. If `verify` reports missing shows, these often recover them (each explains itself when you run it): `npm run recover:trakt`, `npm run resolve:trakt`, `npm run split:trakt`.
+
+## Where to find your results
+
+The tool creates a **`build`** folder automatically the first time you run `npm run build` — you never make it yourself, and it's safe to delete (it's rebuilt on the next run). Most of what's inside is working data the tool uses between steps; you don't need to open those. After a run, the one file to read is:
+
+- **`build/trakt-manifest.md`** (or **`build/simkl-manifest.md`**) — a plain-English list, **by show name**, of anything that couldn't be transferred and why (there's a matching `.json` version for tools). For example:
+
+  ```
+  ## Episodes the catalogue doesn't have
+  - Homemade Love Story — 50 episode(s)
+  - Friends — 7 episode(s)
+
+  ## Watchlist items not added
+  - Memories
+  ```
+
+The full coverage / date-accuracy numbers are printed on screen by `verify`, and also saved to `build/trakt-verify-report.json`.
+
+## Copying your lists to Trakt
+
+> Run `npm run build` once first so the `build` folder exists, then put your list plan inside it (below).
+
+
+Trakt's free plan allows 5 custom lists. To choose which TV Time lists to bring over, copy the example and edit it:
+
+```
+cp trakt-list-plan.example.json build/trakt-list-plan.json
+```
+
+```json
+{
+  "keep": ["C-Drama", "C-drama minis"],
+  "split": { "source": "K-drama", "cap": 250, "oldName": "K-drama Old", "newName": "K-drama New" },
+  "dropped": { "name": "Dropped" }
+}
+```
+
+- **keep** — lists to copy across as-is.
+- **split** — split one big list into two by watch order (the oldest `cap` shows you watched go to the first list, the rest to the second). Leave it out if you don't need it.
+- **dropped** — makes a list of the shows you dropped. Leave it out to skip.
+
+Any list you don't mention is left out (and noted in the run's report).
